@@ -1,5 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+const APP_VERSION = "4.5.0";
+const APP_VERSION_LABEL = `Quietliner v${APP_VERSION}`;
 const STORAGE_KEY = "quietliner.state.v4";
 const MAX_LOGS = 80;
 
@@ -924,6 +926,7 @@ export default function App() {
           <button className="brand-button" type="button" onClick={() => setUiHidden(false)}>
             Quietliner
           </button>
+          <div className="app-version-pill" title="Current app version">v{APP_VERSION}</div>
           <div className="sync-pill" data-status={syncStatus}>{syncStatus}</div>
         </div>
 
@@ -951,6 +954,8 @@ export default function App() {
             onChange={(event) => setQuery(event.target.value)}
             placeholder="Search"
           />
+          <div className="topbar-spacer" />
+          <div className="top-version" title="Current app version">{APP_VERSION_LABEL}</div>
           <button className="ghost-button sync-top-button" type="button" data-status={syncStatus} onClick={() => smartSync().catch(() => {})}>
             {syncStatus === "syncing..." ? "Syncing…" : "Sync"}
           </button>
@@ -966,7 +971,7 @@ export default function App() {
               {zoomRootNode && <strong>{zoomTitle}</strong>}
             </div>
             <h1>{zoomTitle}</h1>
-            <div className="editor-meta">{zoomRootNode ? "Zoomed" : "All"} · v{version} · {new Date(updatedAt).toLocaleString()}</div>
+            <div className="editor-meta">{zoomRootNode ? "Zoomed" : "All"} · {APP_VERSION_LABEL} · data v{version} · {new Date(updatedAt).toLocaleString()}</div>
           </div>
 
           <div className="outline-list">
@@ -1059,6 +1064,10 @@ export default function App() {
 
             {settingsTab === "sync" && (
               <div className="sync-panel">
+                <div className="settings-version-card">
+                  <strong>Current App Version</strong>
+                  <span>{APP_VERSION_LABEL}</span>
+                </div>
                 <label>
                   GAS Web App URL
                   <input value={sync.gasUrl} onChange={(event) => setSync((prev) => ({ ...prev, gasUrl: event.target.value }))} placeholder="https://script.google.com/macros/s/.../exec" />

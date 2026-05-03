@@ -1,5 +1,10 @@
 # Quietliner
 
+## Current Version
+
+Quietliner v4.5.0
+
+
 Version: v4.4 Zoom / quick sync / right-side favorite UI patch
 
 Quietliner is a minimal, immersive Workflowy-style outliner note app.

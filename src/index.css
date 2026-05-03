@@ -84,7 +84,7 @@ button {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 10px;
+  gap: 8px;
   margin-bottom: 24px;
 }
 
@@ -98,6 +98,7 @@ button {
   cursor: pointer;
 }
 
+.app-version-pill,
 .sync-pill {
   max-width: 88px;
   border: 1px solid color-mix(in srgb, var(--app-text) 12%, transparent);
@@ -109,6 +110,11 @@ button {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.app-version-pill {
+  max-width: none;
+  color: color-mix(in srgb, var(--app-text) 52%, transparent);
 }
 
 .sync-pill[data-status="error"] {
@@ -223,8 +229,20 @@ button {
   color: color-mix(in srgb, var(--app-text) 82%, transparent);
 }
 
+.topbar-spacer {
+  flex: 1 1 auto;
+}
+
+.top-version {
+  flex: 0 0 auto;
+  font-size: 11px;
+  color: color-mix(in srgb, var(--app-text) 48%, transparent);
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
 .sync-top-button {
-  margin-left: auto;
+  flex: 0 0 auto;
 }
 
 .sync-top-button[data-status="error"] {
@@ -736,4 +754,25 @@ kbd {
   font-size: 11px;
   line-height: 1.65;
   opacity: 0.62;
+}
+
+.settings-version-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  border: 1px solid color-mix(in srgb, var(--app-text) 10%, transparent);
+  border-radius: 18px;
+  padding: 12px 14px;
+  background: color-mix(in srgb, var(--app-bg) 88%, var(--app-text) 2%);
+}
+
+.settings-version-card strong {
+  font-size: 12px;
+  font-weight: 560;
+}
+
+.settings-version-card span {
+  font-size: 12px;
+  color: color-mix(in srgb, var(--app-text) 56%, transparent);
 }
