@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-const APP_VERSION = "4.8.0";
+const APP_VERSION = "4.8.1";
 const APP_VERSION_LABEL = `Quietliner v${APP_VERSION}`;
 const STORAGE_KEY = "quietliner.state.v4";
 const MAX_LOGS = 80;
@@ -386,6 +386,63 @@ function normalizeImportPayload(parsed) {
     rootTitle,
     version: Number(parsed.version || parsed.data?.version || parsed.payload?.version || 0),
     updatedAt: parsed.updatedAt || parsed.exportedAt || parsed.data?.updatedAt || parsed.payload?.updatedAt || nowIso(),
+  };
+}
+
+
+function makeImportedNode(text, children = [], options = {}) {
+  const time = nowIso();
+  return {
+    id: options.id || uid(),
+    text: String(text || ""),
+    favorite: Boolean(options.favorite),
+    collapsed: Boolean(options.collapsed),
+    children,
+    createdAt: options.createdAt || time,
+    updatedAt: options.updatedAt || time,
+  };
+}
+
+function safeImportId(prefix, value) {
+  return `${prefix}-${String(value || "")}`
+    .replace(/[\s/年月日:：.]+/g, "-")
+    .replace(/[^a-zA-Z0-9_-]/g, "")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "") || uid();
+}
+
+function parseDiaryTextPayload(rawText) {
+  const source = String(rawText || "").replace(/\r\n/g, "\n");
+  const datePattern = /^(20\d{2}[\/\-.]\d{1,2}[\/\-.]\d{1,2})\s*$/gm;
+  const matches = Array.from(source.matchAll(datePattern));
+  if (!matches.length) {
+    throw new Error("Diary date lines not found. Use lines like 2026/01/02.");
+  }
+
+  const entries = matches.map((match, index) => {
+    const date = match[1].replace(/-/g, "/").replace(/\./g, "/");
+    const start = (match.index || 0) + match[0].length;
+    const end = index + 1 < matches.length ? matches[index + 1].index : source.length;
+    const body = source.slice(start, end).trim();
+    return { date, body };
+  }).filter((entry) => entry.date && entry.body);
+
+  if (!entries.length) {
+    throw new Error("Diary entries were found, but their bodies were empty.");
+  }
+
+  const dateNodes = entries.map((entry, index) => {
+    const dateId = safeImportId("diary-date", `${entry.date}-${index}`);
+    const bodyId = safeImportId("diary-body", `${entry.date}-${index}`);
+    return makeImportedNode(entry.date, [makeImportedNode(entry.body, [], { id: bodyId })], { id: dateId });
+  });
+
+  return {
+    app: "Quietliner",
+    schema: "quietliner.diaryText.v1",
+    version: Date.now(),
+    updatedAt: nowIso(),
+    nodes: [makeImportedNode("Diary", dateNodes, { id: "diary-root-import", favorite: true })],
   };
 }
 
@@ -1156,16 +1213,38 @@ export default function App() {
     });
   }, [appendLog, settings, version]);
 
-  const importJsonText = useCallback((rawText, sourceName = "pasted JSON") => {
-    try {
-      const parsed = JSON.parse(String(rawText || ""));
-      applyImportedJson(parsed, sourceName);
-      return true;
-    } catch (error) {
-      const message = `JSON import failed: ${error.message}`;
+  const importJsonText = useCallback((rawText, sourceName = "pasted data") => {
+    const raw = String(rawText || "").trim();
+    if (!raw) {
+      const message = "Import failed: pasted data is empty";
       setImportStatus(message);
-      appendLog("error", "JSON import failed", error.message);
+      appendLog("error", "Import failed", message);
       return false;
+    }
+
+    try {
+      const parsed = JSON.parse(raw);
+      applyImportedJson(parsed, sourceName.includes("JSON") ? sourceName : `${sourceName} JSON`);
+      return true;
+    } catch (jsonError) {
+      try {
+        const diaryPayload = parseDiaryTextPayload(raw);
+        applyImportedJson(diaryPayload, `${sourceName} diary text`);
+        return true;
+      } catch (diaryError) {
+        const looksLikeJson = raw.startsWith("{") || raw.startsWith("[");
+        const help = looksLikeJson
+          ? "JSONが途中で切れている可能性があります。全文を最初の { から最後の } までコピーするか、元の日記テキストをそのまま貼ってください。"
+          : "日付行が見つかりませんでした。2026/01/02 のような日付行で区切った日記テキスト、またはQuietliner JSONを貼ってください。";
+        const message = `Import failed: ${jsonError.message}. ${help}`;
+        setImportStatus(message);
+        appendLog("error", "Import failed", {
+          jsonError: jsonError.message,
+          diaryTextError: diaryError.message,
+          hint: help,
+        });
+        return false;
+      }
     }
   }, [appendLog, applyImportedJson]);
 
@@ -1390,15 +1469,15 @@ export default function App() {
                 </div>
                 <div className="import-paste-box wide">
                   <label>
-                    Paste Import JSON
+                    Paste Import JSON / Diary Text
                     <textarea
                       value={importText}
                       onChange={(event) => setImportText(event.target.value)}
-                      placeholder='JSONをここに貼り付けてから「Import Pasted JSON」を押してください。例: { "nodes": [...] }'
+                      placeholder='Quietliner JSON、または 2026/01/02 のような日付行で区切った日記テキストをそのまま貼れます。'
                     />
                   </label>
                   <div className="settings-actions">
-                    <button type="button" onClick={importPastedJson} disabled={!importText.trim()}>Import Pasted JSON</button>
+                    <button type="button" onClick={importPastedJson} disabled={!importText.trim()}>Import Pasted Data</button>
                     <button type="button" onClick={() => setImportText("")} disabled={!importText}>Clear Paste</button>
                   </div>
                   {importStatus ? <p className="import-status">{importStatus}</p> : null}
