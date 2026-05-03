@@ -632,3 +632,10 @@ kbd {
     grid-template-columns: 1fr;
   }
 }
+
+.sync-hint {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.65;
+  opacity: 0.62;
+}

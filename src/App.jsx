@@ -636,8 +636,24 @@ export default function App() {
     },
   }), [getCurrentItems, settings, updatedAt, version]);
 
+  function explainGasFailure(action, response, text, json) {
+    if (json?.error) return json.error;
+    if (!response.ok) return `HTTP ${response.status}`;
+    const trimmed = String(text || "").trim();
+    if (trimmed.startsWith("<")) {
+      return "GAS returned HTML. Check that the Web App URL ends with /exec and the deployment is accessible.";
+    }
+    if (!trimmed) return "Empty response from GAS";
+    return `${action} returned an unreadable response`;
+  }
+
   async function postToGas(action, extra = {}) {
-    if (!sync.gasUrl.trim()) throw new Error("GAS Web App URL is empty");
+    const gasUrl = sync.gasUrl.trim();
+    if (!gasUrl) throw new Error("GAS Web App URL is empty");
+    if (action !== "ping" && !sync.secret.trim()) {
+      throw new Error("Shared Secret is empty. Put the same value as QUIETLINER_SECRET in GAS Script Properties.");
+    }
+
     const body = {
       action,
       secret: sync.secret,
@@ -647,23 +663,48 @@ export default function App() {
       device: navigator.userAgent,
       ...extra,
     };
-    const response = await fetch(sync.gasUrl.trim(), {
-      method: "POST",
-      mode: "cors",
-      headers: { "Content-Type": "text/plain;charset=utf-8" },
-      body: JSON.stringify(body),
+
+    appendLog("info", `${action} request`, {
+      endpoint: gasUrl.replace(/\?.*$/, ""),
+      hasSecret: Boolean(sync.secret.trim()),
+      localVersion: version,
+      localUpdatedAt: updatedAt,
     });
-    const text = await response.text();
+
+    let response;
+    let text = "";
+    try {
+      response = await fetch(gasUrl, {
+        method: "POST",
+        mode: "cors",
+        headers: { "Content-Type": "text/plain;charset=utf-8" },
+        body: JSON.stringify(body),
+      });
+      text = await response.text();
+    } catch (error) {
+      const message = "Network/CORS request failed. Check GAS deployment access: Execute as Me, access Anyone, and use the /exec URL.";
+      appendLog("error", `${action} failed`, `${message}\n\n${error?.message || error}`);
+      throw new Error(message);
+    }
+
     let json = null;
     try {
       json = JSON.parse(text);
     } catch {
       json = { ok: false, raw: text };
     }
-    appendLog(response.ok && json.ok !== false ? "info" : "error", `${action} / HTTP ${response.status}`, text.slice(0, 1200));
+
     if (!response.ok || json.ok === false) {
-      throw new Error(json.error || `HTTP ${response.status}`);
+      const message = explainGasFailure(action, response, text, json);
+      appendLog("error", `${action} failed`, {
+        message,
+        httpStatus: response.status,
+        responsePreview: text.slice(0, 1200),
+      });
+      throw new Error(message);
     }
+
+    appendLog("info", `${action} succeeded / HTTP ${response.status}`, json);
     return json;
   }
 
@@ -682,12 +723,22 @@ export default function App() {
   async function runDiagnostics() {
     setSyncStatus("syncing...");
     try {
-      const result = await postToGas("diagnostics");
+      await postToGas("diagnostics");
       setSyncStatus("synced");
-      appendLog("info", "Diagnostics succeeded", result);
     } catch (error) {
       setSyncStatus("error");
       appendLog("error", "Diagnostics failed", error.message);
+    }
+  }
+
+  async function runStatus() {
+    setSyncStatus("syncing...");
+    try {
+      await postToGas("status");
+      setSyncStatus("synced");
+    } catch (error) {
+      setSyncStatus("error");
+      appendLog("error", "Status failed", error.message);
     }
   }
 
@@ -929,6 +980,7 @@ export default function App() {
                   <input type="checkbox" checked={sync.autoSync} onChange={(event) => setSync((prev) => ({ ...prev, autoSync: event.target.checked }))} />
                   Auto Sync ON/OFF
                 </label>
+                <p className="sync-hint">まず Ping → Diagnostics → Status の順に確認してください。Status が失敗する場合は、Notion Token / Database ID / Shared Secret / Web App URL のどこかで止まっています。</p>
 
                 <div className="sync-state-card">
                   <span>Status</span>
@@ -939,6 +991,7 @@ export default function App() {
                 <div className="sync-buttons">
                   <button type="button" onClick={runPing}>Ping</button>
                   <button type="button" onClick={runDiagnostics}>Diagnostics</button>
+                  <button type="button" onClick={runStatus}>Status</button>
                   <button type="button" onClick={() => pushRemote().catch(() => {})}>Push</button>
                   <button type="button" onClick={() => pullRemote().catch(() => {})}>Pull</button>
                   <button type="button" onClick={() => smartSync().catch(() => {})}>Smart Sync</button>

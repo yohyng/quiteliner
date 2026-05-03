@@ -1,5 +1,7 @@
 # Quietliner
 
+Version: v4.1 sync diagnostics patch
+
 Quietliner is a minimal, immersive Workflowy-style outliner note app.
 
 This version is designed for Vercel deployment and uses browser `localStorage` as the primary storage. Optional backup / loose sync is available through GAS → Notion DB.
