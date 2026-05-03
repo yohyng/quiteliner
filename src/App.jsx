@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-const APP_VERSION = "4.9.0";
+const APP_VERSION = "5.0.0";
 const APP_VERSION_LABEL = `Quietliner v${APP_VERSION}`;
 const STORAGE_KEY = "quietliner.state.v4";
 const MAX_LOGS = 80;
@@ -16,6 +16,8 @@ const DEFAULT_SETTINGS = {
   theme: "light",
   font: "gothic",
   fontSize: 18,
+  lineHeight: 1.55,
+  letterSpacing: 0.01,
   bgLight: "#fbfaf7",
   textLight: "#171717",
   bgDark: "#111111",
@@ -38,6 +40,27 @@ function nowIso() {
   return new Date().toISOString();
 }
 
+function pad2(value) {
+  return String(value).padStart(2, "0");
+}
+
+function formatLocalDate(date = new Date()) {
+  return `${date.getFullYear()}/${pad2(date.getMonth() + 1)}/${pad2(date.getDate())}`;
+}
+
+function formatLocalDateTime(date = new Date()) {
+  return `${formatLocalDate(date)} ${pad2(date.getHours())}:${pad2(date.getMinutes())}`;
+}
+
+function expandInlineCommands(text) {
+  const source = String(text ?? "");
+  const today = formatLocalDate();
+  const now = formatLocalDateTime();
+  return source
+    .replace(/(^|\s)(\/today|;today)(?=$|\s)/g, `$1${today}`)
+    .replace(/(^|\s)(\/now|;now)(?=$|\s)/g, `$1${now}`);
+}
+
 function makeNode(text = "") {
   const time = nowIso();
   return {
@@ -55,7 +78,7 @@ function defaultItems() {
   return [
     makeNode("Quietlinerへようこそ"),
     {
-      ...makeNode("Enterで次の項目、Shift+Enterで子要素を作成できます"),
+      ...makeNode("Enterで次の項目、Shift+Enterでブロック内改行"),
       children: [makeNode("Tab / Shift+Tabで階層を調整"), makeNode("☆でサイドバーに固定")],
     },
   ];
@@ -358,12 +381,128 @@ function ensureNodeShape(input, fallbackText = "") {
     children: childrenSource.map((child) => ensureNodeShape(child)),
     createdAt: input?.createdAt || time,
     updatedAt: input?.updatedAt || time,
+    deletedAt: input?.deletedAt || null,
   };
 }
 
 function countNodes(items) {
   if (!Array.isArray(items)) return 0;
   return items.reduce((sum, node) => sum + 1 + countNodes(node.children || []), 0);
+}
+
+function summarizeItems(items) {
+  const source = Array.isArray(items) ? items : [];
+  const charCount = source.reduce((sum, node) => sum + countChars(node), 0);
+  return {
+    rootCount: source.length,
+    nodeCount: countNodes(source),
+    charCount,
+    isStarter: isStarterOutline(source),
+    isEffectivelyEmpty: isEffectivelyEmptyOutline(source),
+  };
+}
+
+function isStarterOutline(items) {
+  const source = Array.isArray(items) ? items : [];
+  const flat = flattenVisible(source).map(({ node }) => String(node.text || "").trim());
+  return (
+    flat.length <= 3 &&
+    flat[0] === "Quietlinerへようこそ" &&
+    flat.some((text) => text.includes("Enterで次の項目"))
+  );
+}
+
+function isEffectivelyEmptyOutline(items) {
+  const source = Array.isArray(items) ? items : [];
+  if (!source.length) return true;
+  if (isStarterOutline(source)) return true;
+  return source.every((node) => countChars(node) === 0 && !(node.children || []).length);
+}
+
+function newestTimestamp(a, b) {
+  const left = Date.parse(a || "") || 0;
+  const right = Date.parse(b || "") || 0;
+  return left >= right ? a : b;
+}
+
+function mergeNodeLists(localList = [], remoteList = []) {
+  const result = [];
+  const used = new Set();
+  const localById = new Map((localList || []).map((node) => [node.id, node]));
+  const remoteById = new Map((remoteList || []).map((node) => [node.id, node]));
+  const orderedIds = [];
+
+  (remoteList || []).forEach((node) => {
+    if (node?.id && !orderedIds.includes(node.id)) orderedIds.push(node.id);
+  });
+  (localList || []).forEach((node) => {
+    if (node?.id && !orderedIds.includes(node.id)) orderedIds.push(node.id);
+  });
+
+  orderedIds.forEach((id) => {
+    const localNode = localById.get(id);
+    const remoteNode = remoteById.get(id);
+    if (localNode && remoteNode) {
+      result.push(mergeNode(localNode, remoteNode));
+    } else if (localNode) {
+      result.push(cloneNode(localNode));
+    } else if (remoteNode) {
+      result.push(cloneNode(remoteNode));
+    }
+    used.add(id);
+  });
+
+  (localList || []).forEach((node) => {
+    if (!node?.id || used.has(node.id)) return;
+    result.push(cloneNode(node));
+  });
+  (remoteList || []).forEach((node) => {
+    if (!node?.id || used.has(node.id)) return;
+    result.push(cloneNode(node));
+  });
+
+  return result;
+}
+
+function mergeNode(localNode, remoteNode) {
+  const localTime = Date.parse(localNode?.updatedAt || "") || 0;
+  const remoteTime = Date.parse(remoteNode?.updatedAt || "") || 0;
+  const primary = localTime >= remoteTime ? localNode : remoteNode;
+  const secondary = primary === localNode ? remoteNode : localNode;
+  return {
+    ...cloneNode(secondary || {}),
+    ...cloneNode(primary || {}),
+    id: primary?.id || secondary?.id || uid(),
+    text: primary?.text ?? secondary?.text ?? "",
+    favorite: Boolean(primary?.favorite || secondary?.favorite),
+    collapsed: Boolean(primary?.collapsed),
+    createdAt: primary?.createdAt || secondary?.createdAt || nowIso(),
+    updatedAt: newestTimestamp(primary?.updatedAt, secondary?.updatedAt) || nowIso(),
+    deletedAt: primary?.deletedAt || secondary?.deletedAt || null,
+    children: mergeNodeLists(localNode?.children || [], remoteNode?.children || []),
+  };
+}
+
+function mergePayloads(localPayload, remotePayload) {
+  const localItems = Array.isArray(localPayload?.items) ? localPayload.items : [];
+  const remoteItems = Array.isArray(remotePayload?.items) ? remotePayload.items : [];
+  const mergedItems = mergeNodeLists(localItems, remoteItems);
+  const mergedSettings = {
+    ...(remotePayload?.settings || {}),
+    ...(localPayload?.settings || {}),
+  };
+  const timestamp = nowIso();
+  return {
+    ...(remotePayload || {}),
+    ...(localPayload || {}),
+    schema: "quietliner.v1",
+    mergedAt: timestamp,
+    version: Math.max(Number(localPayload?.version || 0), Number(remotePayload?.version || 0)) + 1,
+    updatedAt: timestamp,
+    items: mergedItems.length ? mergedItems : [makeNode("")],
+    settings: mergedSettings,
+    summary: summarizeItems(mergedItems),
+  };
 }
 
 function extractImportItems(parsed) {
@@ -485,6 +624,7 @@ function makeImportedNode(text, children = [], options = {}) {
     children,
     createdAt: options.createdAt || time,
     updatedAt: options.updatedAt || time,
+    deletedAt: options.deletedAt || null,
   };
 }
 
@@ -924,7 +1064,8 @@ export default function App() {
   }, [commitDraft]);
 
   const handleChange = useCallback((id, value) => {
-    setDrafts((prev) => ({ ...prev, [id]: value }));
+    const nextValue = expandInlineCommands(value);
+    setDrafts((prev) => ({ ...prev, [id]: nextValue }));
     if (!uiHidden && !settingsOpen) setUiHidden(true);
   }, [settingsOpen, uiHidden]);
 
@@ -1146,23 +1287,30 @@ export default function App() {
     setDrafts((prev) => ({ ...prev, [node.id]: "" }));
   }, [activeId, drafts, mutateItems, zoomRootId]);
 
-  const buildExportPayload = useCallback(() => ({
-    schema: "quietliner.v1",
-    exportedAt: nowIso(),
-    version,
-    updatedAt,
-    items: getCurrentItems(),
-    settings: {
-      theme: settings.theme,
-      font: settings.font,
-      fontSize: settings.fontSize,
-      bgLight: settings.bgLight,
-      textLight: settings.textLight,
-      bgDark: settings.bgDark,
-      textDark: settings.textDark,
-      rootTitle: settings.rootTitle,
-    },
-  }), [getCurrentItems, settings, updatedAt, version]);
+  const buildExportPayload = useCallback(() => {
+    const currentItems = getCurrentItems();
+    return {
+      schema: "quietliner.v1",
+      appVersion: APP_VERSION,
+      exportedAt: nowIso(),
+      version,
+      updatedAt,
+      items: currentItems,
+      summary: summarizeItems(currentItems),
+      settings: {
+        theme: settings.theme,
+        font: settings.font,
+        fontSize: settings.fontSize,
+        lineHeight: settings.lineHeight,
+        letterSpacing: settings.letterSpacing,
+        bgLight: settings.bgLight,
+        textLight: settings.textLight,
+        bgDark: settings.bgDark,
+        textDark: settings.textDark,
+        rootTitle: settings.rootTitle,
+      },
+    };
+  }, [getCurrentItems, settings, updatedAt, version]);
 
   function explainGasFailure(action, response, text, json) {
     if (json?.error) {
@@ -1282,14 +1430,29 @@ export default function App() {
     }
   }
 
-  async function pushRemote(source = "manual") {
+  async function pushPayloadToRemote(payload, source = "manual", options = {}) {
+    const payloadSummary = summarizeItems(payload.items || []);
+    if (payloadSummary.isEffectivelyEmpty && !options.force) {
+      throw new Error("Local outline looks empty or starter-only. Push was blocked to protect remote data. Use Force Replace Remote only if you really want to overwrite Notion.");
+    }
+    const nextPayload = { ...payload, summary: payloadSummary };
+    const result = await postToGas("push", {
+      payload: nextPayload,
+      source,
+      snapshotBefore: options.snapshotBefore !== false,
+      force: Boolean(options.force),
+    });
+    return result;
+  }
+
+  async function pushRemote(source = "manual", options = {}) {
     setSyncStatus("syncing...");
     const payload = buildExportPayload();
     try {
-      const result = await postToGas("push", { payload, source });
+      const result = await pushPayloadToRemote(payload, source, options);
       setSyncStatus("synced");
       setDirty(false);
-      appendLog("info", "Push succeeded", result);
+      appendLog("info", options.force ? "Force Replace Remote succeeded" : "Push succeeded", result);
       return result;
     } catch (error) {
       setSyncStatus("error");
@@ -1298,20 +1461,28 @@ export default function App() {
     }
   }
 
-  async function pullRemote() {
+  function applyRemotePayload(payload, result = {}) {
+    if (!payload || !Array.isArray(payload.items)) throw new Error("Remote payload has no items array");
+    setItems(payload.items);
+    setVersion(Number(payload.version || result.remoteVersion || version + 1));
+    setUpdatedAt(payload.updatedAt || result.remoteUpdatedAt || nowIso());
+    if (payload.settings) setSettings((prev) => ({ ...prev, ...payload.settings }));
+    setDrafts({});
+    setZoomRootId(null);
+    setSelectedIds([]);
+    setDirty(false);
+  }
+
+  async function pullRemote(options = { apply: true }) {
     setSyncStatus("syncing...");
     try {
       const result = await postToGas("pull");
       const payload = result.payload;
-      if (!payload || !Array.isArray(payload.items)) throw new Error("Remote payload has no items array");
-      setItems(payload.items);
-      setVersion(Number(payload.version || result.remoteVersion || version + 1));
-      setUpdatedAt(payload.updatedAt || result.remoteUpdatedAt || nowIso());
-      if (payload.settings) setSettings((prev) => ({ ...prev, ...payload.settings }));
-      setDrafts({});
-      setDirty(false);
-      setSyncStatus("synced");
-      appendLog("info", "Pull succeeded", result);
+      if (options.apply !== false) {
+        applyRemotePayload(payload, result);
+        setSyncStatus("synced");
+        appendLog("info", "Pull succeeded", result);
+      }
       return result;
     } catch (error) {
       setSyncStatus("error");
@@ -1323,25 +1494,60 @@ export default function App() {
   async function smartSync() {
     setSyncStatus("syncing...");
     try {
+      const localPayload = buildExportPayload();
+      const localSummary = summarizeItems(localPayload.items);
       const status = await postToGas("status");
-      const remoteVersion = Number(status.remoteVersion || 0);
-      const remoteUpdatedAt = status.remoteUpdatedAt ? Date.parse(status.remoteUpdatedAt) : 0;
-      const localUpdatedAt = updatedAt ? Date.parse(updatedAt) : 0;
-      if (!remoteVersion) {
-        appendLog("info", "Smart Sync: remote is empty, pushing local data");
-        return await pushRemote("smart-empty-remote");
-      }
-      if (remoteVersion > version || remoteUpdatedAt > localUpdatedAt) {
-        appendLog("info", "Smart Sync: remote is newer, pulling remote data", status);
+      const remoteSummary = status.summary || status.remoteSummary || { nodeCount: 0, charCount: 0, isEffectivelyEmpty: !status.exists };
+      const remoteLooksEmpty = !status.exists || !Number(status.remoteVersion || 0) || remoteSummary.isEffectivelyEmpty || Number(remoteSummary.nodeCount || 0) === 0;
+
+      if (localSummary.isEffectivelyEmpty && !remoteLooksEmpty) {
+        appendLog("info", "Smart Sync: local is empty/starter-only, pulling remote data", { localSummary, remoteSummary });
         return await pullRemote();
       }
-      appendLog("info", "Smart Sync: local is newer or same, pushing local data", status);
-      return await pushRemote("smart-local-newer");
+
+      if (!localSummary.isEffectivelyEmpty && remoteLooksEmpty) {
+        appendLog("info", "Smart Sync: remote is empty, pushing local data", { localSummary, remoteSummary });
+        const result = await pushPayloadToRemote(localPayload, "smart-empty-remote", { snapshotBefore: false });
+        setSyncStatus("synced");
+        setDirty(false);
+        return result;
+      }
+
+      if (localSummary.isEffectivelyEmpty && remoteLooksEmpty) {
+        setSyncStatus("synced");
+        appendLog("info", "Smart Sync: both sides look empty. Nothing pushed.", { localSummary, remoteSummary });
+        return status;
+      }
+
+      const pullResult = await postToGas("pull");
+      const remotePayload = pullResult.payload;
+      const mergedPayload = mergePayloads(localPayload, remotePayload);
+      applyRemotePayload(mergedPayload, { remoteVersion: mergedPayload.version, remoteUpdatedAt: mergedPayload.updatedAt });
+      const pushResult = await postToGas("push", {
+        payload: mergedPayload,
+        source: "smart-merge",
+        snapshotBefore: true,
+      });
+      setSyncStatus("synced");
+      setDirty(false);
+      appendLog("info", "Smart Sync: merged local and remote, then pushed snapshot", {
+        localSummary,
+        remoteSummary,
+        mergedSummary: mergedPayload.summary,
+        pushResult,
+      });
+      return pushResult;
     } catch (error) {
       setSyncStatus("error");
       appendLog("error", "Smart Sync failed", error.message);
       throw error;
     }
+  }
+
+  async function forceReplaceRemote() {
+    const ok = window.confirm("Force Replace Remote will overwrite the Notion copy with this device's current outline. A snapshot will be created first when possible. Continue?");
+    if (!ok) return null;
+    return pushRemote("force-replace", { force: true, snapshotBefore: true });
   }
 
   const applyImportedJson = useCallback((parsed, sourceName = "JSON") => {
@@ -1453,6 +1659,8 @@ export default function App() {
     "--app-text": appTextColor,
     "--app-font": fontFamily,
     "--editor-font-size": `${settings.fontSize}px`,
+    "--editor-line-height": Number(settings.lineHeight || 1.55),
+    "--editor-letter-spacing": `${Number(settings.letterSpacing ?? 0.01)}em`,
   };
 
   return (
@@ -1625,6 +1833,14 @@ export default function App() {
                   Editor Font Size <span>{settings.fontSize}px</span>
                   <input type="range" min="13" max="30" value={settings.fontSize} onChange={(event) => setSettings((prev) => ({ ...prev, fontSize: Number(event.target.value) }))} />
                 </label>
+                <label className="range-field">
+                  Line Height <span>{Number(settings.lineHeight || 1.55).toFixed(2)}</span>
+                  <input type="range" min="1.2" max="2.2" step="0.05" value={settings.lineHeight || 1.55} onChange={(event) => setSettings((prev) => ({ ...prev, lineHeight: Number(event.target.value) }))} />
+                </label>
+                <label className="range-field">
+                  Letter Spacing <span>{Number(settings.letterSpacing ?? 0.01).toFixed(2)}em</span>
+                  <input type="range" min="-0.04" max="0.16" step="0.01" value={settings.letterSpacing ?? 0.01} onChange={(event) => setSettings((prev) => ({ ...prev, letterSpacing: Number(event.target.value) }))} />
+                </label>
                 <label>
                   Light Background
                   <input type="color" value={settings.bgLight} onChange={(event) => setSettings((prev) => ({ ...prev, bgLight: event.target.value }))} />
@@ -1701,7 +1917,7 @@ export default function App() {
                   <input type="checkbox" checked={sync.autoSync} onChange={(event) => setSync((prev) => ({ ...prev, autoSync: event.target.checked }))} />
                   Auto Sync ON/OFF
                 </label>
-                <p className="sync-hint">まず Ping → Diagnostics → Status の順に確認してください。Status が失敗する場合は、Notion Token / Database ID / Shared Secret / Web App URL のどこかで止まっています。</p>
+                <p className="sync-hint">Smart Syncは空データPushを防ぎ、両方にデータがある場合はMergeを試みます。Force Replace Remoteだけは現在の端末内容でNotion側を上書きする危険操作です。</p>
 
                 <div className="sync-state-card">
                   <span>Status</span>
@@ -1713,9 +1929,10 @@ export default function App() {
                   <button type="button" onClick={runPing}>Ping</button>
                   <button type="button" onClick={runDiagnostics}>Diagnostics</button>
                   <button type="button" onClick={runStatus}>Status</button>
-                  <button type="button" onClick={() => pushRemote().catch(() => {})}>Push</button>
+                  <button type="button" onClick={() => pushRemote().catch(() => {})}>Push Backup</button>
                   <button type="button" onClick={() => pullRemote().catch(() => {})}>Pull</button>
                   <button type="button" onClick={() => smartSync().catch(() => {})}>Smart Sync</button>
+                  <button className="danger-button" type="button" onClick={() => forceReplaceRemote().catch(() => {})}>Force Replace Remote</button>
                   <button type="button" onClick={() => setSyncLog([])}>Clear Log</button>
                 </div>
 
@@ -1742,6 +1959,8 @@ export default function App() {
                 <div><kbd>☆</kbd><span>お気に入り</span></div>
                 <div><kbd>Esc</kbd><span>UI表示</span></div>
                 <div><kbd>Ctrl</kbd> / <kbd>⌘</kbd> + <kbd>K</kbd><span>検索</span></div>
+                <div><kbd>/today</kbd> / <kbd>;today</kbd><span>今日の日付を挿入</span></div>
+                <div><kbd>/now</kbd> / <kbd>;now</kbd><span>現在時刻つきの日付を挿入</span></div>
               </div>
             )}
           </section>

@@ -349,8 +349,8 @@ button {
   font-family: var(--app-font);
   font-size: clamp(24px, calc(var(--editor-font-size) * 1.7), 42px);
   font-weight: 560;
-  line-height: 1.25;
-  letter-spacing: 0.01em;
+  line-height: max(1.15, calc(var(--editor-line-height, 1.55) - 0.3));
+  letter-spacing: var(--editor-letter-spacing, 0.01em);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
@@ -429,7 +429,7 @@ button {
 }
 
 .outline-row[data-active="true"] {
-  background: color-mix(in srgb, var(--app-text) 5%, transparent);
+  background: transparent;
 }
 
 .row-gutter {
@@ -441,11 +441,11 @@ button {
 }
 
 .outline-row[data-selected="true"] {
-  background: color-mix(in srgb, var(--app-text) 9%, transparent);
+  background: transparent;
 }
 
 .outline-row[data-selected="true"] .text-shell {
-  box-shadow: inset 2px 0 0 color-mix(in srgb, var(--app-text) 34%, transparent);
+  box-shadow: none;
 }
 
 .select-grip {
@@ -560,8 +560,8 @@ button {
   font-family: var(--app-font);
   font-size: var(--editor-font-size);
   font-weight: 400;
-  line-height: 1.55;
-  letter-spacing: 0.01em;
+  line-height: var(--editor-line-height, 1.55);
+  letter-spacing: var(--editor-letter-spacing, 0.01em);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
@@ -1031,4 +1031,15 @@ kbd {
   .outline-row {
     grid-template-columns: calc(var(--depth) * 20px + 72px) minmax(0, 1fr) auto;
   }
+}
+
+
+/* v5.0.0 additions */
+.danger-button {
+  border-color: color-mix(in srgb, #b00020 36%, var(--app-text) 12%) !important;
+  color: color-mix(in srgb, #b00020 72%, var(--app-text) 28%) !important;
+}
+
+.danger-button:hover {
+  background: color-mix(in srgb, #b00020 10%, transparent) !important;
 }

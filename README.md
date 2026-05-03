@@ -2,15 +2,15 @@
 
 ## Current Version
 
-Quietliner v4.9.0
+Quietliner v5.0.0
 
-This package is a re-exported v4.9.0 build. The visible app version, `package.json`, `index.html`, `VERSION.txt`, and this README are all aligned to v4.9.0.
+This package is a re-exported v5.0.0 build. The visible app version, `package.json`, `index.html`, `VERSION.txt`, and this README are all aligned to v5.0.0.
 
 Quietliner is a minimal, immersive Workflowy-style outliner note app.
 
 This version is designed for Vercel deployment and uses browser `localStorage` as the primary storage. Optional backup / loose sync is available through GAS → Notion DB.
 
-## v4.9.0 Focus
+## v5.0.0 Focus
 
 - Import now defaults to **append** instead of replacing the current outline.
 - A Replace mode remains available when you intentionally want to overwrite the current outline.
@@ -80,3 +80,14 @@ quietliner
 7. In Quietliner Settings → GAS / Notion Sync, paste:
    - GAS Web App URL
    - Shared Secret
+
+
+## v5.0.0 Updates
+
+- Safe Smart Sync: blocks starter/empty local data from overwriting remote data.
+- Smart Sync now pulls when local is empty and remote has data, pushes when remote is empty, and merges when both sides have data.
+- Push Backup creates a remote snapshot first when the updated GAS bridge is deployed.
+- Force Replace Remote is separated as a dangerous explicit action.
+- Removed the subtle selected-row background highlight.
+- Added Line Height and Letter Spacing settings.
+- Added inline commands: `/today`, `;today`, `/now`, `;now`.
