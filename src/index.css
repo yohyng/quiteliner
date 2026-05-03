@@ -306,6 +306,93 @@ button {
   letter-spacing: 0.01em;
 }
 
+.zoom-title-editor {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 12px;
+  margin: 0 0 10px;
+  border-radius: 16px;
+}
+
+.zoom-title-editor[data-active="true"] {
+  background: color-mix(in srgb, var(--app-text) 4%, transparent);
+}
+
+.zoom-title-shell {
+  position: relative;
+  min-height: 44px;
+}
+
+.zoom-title-mirror,
+.zoom-title-input {
+  width: 100%;
+  min-height: 44px;
+  margin: 0;
+  border: 0;
+  padding: 0 4px 6px;
+  font-family: var(--app-font);
+  font-size: clamp(24px, calc(var(--editor-font-size) * 1.7), 42px);
+  font-weight: 560;
+  line-height: 1.25;
+  letter-spacing: 0.01em;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.zoom-title-mirror {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  color: var(--app-text);
+}
+
+.zoom-title-input {
+  position: relative;
+  display: block;
+  resize: none;
+  overflow: hidden;
+  outline: 0;
+  color: var(--app-text);
+  background: transparent;
+  caret-color: var(--app-text);
+}
+
+.zoom-title-shell.has-query .zoom-title-input {
+  color: transparent;
+}
+
+.zoom-title-input::placeholder {
+  color: color-mix(in srgb, var(--app-text) 22%, transparent);
+}
+
+.zoom-title-actions {
+  display: flex;
+  align-items: flex-start;
+  gap: 4px;
+  padding-top: 4px;
+}
+
+.zoom-title-favorite {
+  width: 28px;
+  height: 28px;
+}
+
+.empty-zoom-row {
+  width: 100%;
+  min-height: 42px;
+  border: 1px dashed color-mix(in srgb, var(--app-text) 14%, transparent);
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--app-bg) 92%, var(--app-text) 2%);
+  color: color-mix(in srgb, var(--app-text) 42%, transparent);
+  cursor: pointer;
+}
+
+.empty-zoom-row:hover {
+  color: var(--app-text);
+  border-color: color-mix(in srgb, var(--app-text) 24%, transparent);
+}
+
 .editor-meta {
   font-size: 11px;
   color: color-mix(in srgb, var(--app-text) 42%, transparent);
@@ -319,7 +406,7 @@ button {
 
 .outline-row {
   display: grid;
-  grid-template-columns: calc(var(--depth) * 28px + 50px) minmax(0, 1fr) auto;
+  grid-template-columns: calc(var(--depth) * 28px + 64px) minmax(0, 1fr) auto;
   align-items: start;
   min-height: 34px;
   border-radius: 12px;
@@ -338,9 +425,44 @@ button {
   padding: 3px 8px 0 0;
 }
 
+.outline-row[data-selected="true"] {
+  background: color-mix(in srgb, var(--app-text) 9%, transparent);
+}
+
+.outline-row[data-selected="true"] .text-shell {
+  box-shadow: inset 2px 0 0 color-mix(in srgb, var(--app-text) 34%, transparent);
+}
+
+.select-grip {
+  width: 12px;
+  height: 28px;
+  border: 0;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  background: transparent;
+  color: color-mix(in srgb, var(--app-text) 30%, transparent);
+  cursor: ns-resize;
+}
+
+.select-grip span {
+  width: 2px;
+  height: 14px;
+  border-radius: 999px;
+  background: currentColor;
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+.outline-row:hover .select-grip span,
+.outline-row[data-selected="true"] .select-grip span {
+  opacity: 0.72;
+}
+
 .collapse-button,
 .favorite-button,
 .zoom-dot-button,
+.select-grip,
 .close-button {
   border: 0;
   background: transparent;
@@ -737,7 +859,7 @@ kbd {
   }
 
   .outline-row {
-    grid-template-columns: calc(var(--depth) * 20px + 42px) minmax(0, 1fr) auto;
+    grid-template-columns: calc(var(--depth) * 20px + 56px) minmax(0, 1fr) auto;
   }
 
   .sync-top-button {

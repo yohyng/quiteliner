@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-const APP_VERSION = "4.5.0";
+const APP_VERSION = "4.6.0";
 const APP_VERSION_LABEL = `Quietliner v${APP_VERSION}`;
 const STORAGE_KEY = "quietliner.state.v4";
 const MAX_LOGS = 80;
@@ -318,6 +318,7 @@ function OutlineRow({
   depth,
   query,
   activeId,
+  selected,
   drafts,
   registerInput,
   onFocus,
@@ -327,6 +328,8 @@ function OutlineRow({
   onToggleFavorite,
   onToggleCollapse,
   onZoom,
+  onBeginSelect,
+  onEnterSelect,
 }) {
   const textareaRef = useRef(null);
   const value = drafts[node.id] ?? node.text ?? "";
@@ -343,8 +346,23 @@ function OutlineRow({
   }, [value, activeId]);
 
   return (
-    <div className="outline-row" data-active={isActive ? "true" : "false"} style={{ "--depth": depth }}>
+    <div
+      className="outline-row"
+      data-active={isActive ? "true" : "false"}
+      data-selected={selected ? "true" : "false"}
+      style={{ "--depth": depth }}
+      onPointerEnter={() => onEnterSelect(node.id)}
+    >
       <div className="row-gutter">
+        <button
+          className="select-grip"
+          type="button"
+          aria-label="Select this row"
+          title="Drag to select rows"
+          onPointerDown={(event) => onBeginSelect(event, node.id)}
+        >
+          <span />
+        </button>
         <button
           className="zoom-dot-button"
           type="button"
@@ -410,6 +428,72 @@ function OutlineRow({
   );
 }
 
+function ZoomTitleEditor({
+  node,
+  query,
+  activeId,
+  drafts,
+  registerInput,
+  onFocus,
+  onBlur,
+  onChange,
+  onKeyDown,
+  onToggleFavorite,
+}) {
+  const textareaRef = useRef(null);
+  const value = drafts[node.id] ?? node.text ?? "";
+  const hasQuery = query.trim().length > 0;
+  const isActive = activeId === node.id;
+  const chars = countChars(node, drafts);
+
+  useEffect(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.max(40, el.scrollHeight)}px`;
+  }, [value, activeId]);
+
+  return (
+    <div className="zoom-title-editor" data-active={isActive ? "true" : "false"}>
+      <div className={`zoom-title-shell ${hasQuery ? "has-query" : ""}`}>
+        {hasQuery && (
+          <div className="zoom-title-mirror" aria-hidden="true">
+            <HighlightedText text={value} query={query} />
+          </div>
+        )}
+        <textarea
+          ref={(el) => {
+            textareaRef.current = el;
+            registerInput(node.id, el);
+          }}
+          className="zoom-title-input"
+          rows={1}
+          value={value}
+          placeholder="Untitled"
+          spellCheck={false}
+          onFocus={() => onFocus(node.id, node.text ?? "")}
+          onBlur={() => onBlur(node.id)}
+          onChange={(event) => onChange(node.id, event.target.value)}
+          onKeyDown={(event) => onKeyDown(event, node)}
+        />
+      </div>
+      <div className="zoom-title-actions">
+        <span className="char-count" title="このZoom配下の文字数">{chars}</span>
+        <button
+          className="favorite-button zoom-title-favorite"
+          type="button"
+          aria-label={node.favorite ? "Unfavorite" : "Favorite"}
+          title={node.favorite ? "Unfavorite" : "Favorite"}
+          onMouseDown={(event) => event.preventDefault()}
+          onClick={() => onToggleFavorite(node.id)}
+        >
+          {node.favorite ? "★" : "☆"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
   const initial = useMemo(loadState, []);
   const [items, setItems] = useState(initial.items);
@@ -427,15 +511,20 @@ export default function App() {
   const [syncLog, setSyncLog] = useState([]);
   const [dirty, setDirty] = useState(false);
   const [zoomRootId, setZoomRootId] = useState(null);
+  const [selectedIds, setSelectedIds] = useState([]);
+  const [selectionAnchorId, setSelectionAnchorId] = useState(null);
+  const [isSelectingRows, setIsSelectingRows] = useState(false);
 
   const inputRefs = useRef(new Map());
   const autoSyncTimer = useRef(null);
 
   const zoomRootNode = useMemo(() => getNodeById(items, zoomRootId), [items, zoomRootId]);
   const visibleRows = useMemo(() => {
-    if (zoomRootNode) return flattenVisible([zoomRootNode]);
+    if (zoomRootNode) return flattenVisible(zoomRootNode.children || []);
     return flattenVisible(items);
   }, [items, zoomRootNode]);
+  const visibleIds = useMemo(() => visibleRows.map(({ node }) => node.id), [visibleRows]);
+  const selectedIdSet = useMemo(() => new Set(selectedIds), [selectedIds]);
   const favorites = useMemo(() => collectFavorites(items), [items]);
   const zoomTitle = zoomRootNode ? getReadableTitle(zoomRootNode) : "All Notes";
   const activeTheme = settings.theme === "dark" ? "dark" : "light";
@@ -541,6 +630,21 @@ export default function App() {
   }, [items, zoomRootId]);
 
   useEffect(() => {
+    setSelectedIds((prev) => prev.filter((id) => visibleIds.includes(id)));
+  }, [visibleIds]);
+
+  useEffect(() => {
+    if (!isSelectingRows) return undefined;
+    const stop = () => setIsSelectingRows(false);
+    window.addEventListener("pointerup", stop, { once: true });
+    window.addEventListener("blur", stop, { once: true });
+    return () => {
+      window.removeEventListener("pointerup", stop);
+      window.removeEventListener("blur", stop);
+    };
+  }, [isSelectingRows]);
+
+  useEffect(() => {
     if (!sync.autoSync || !dirty || !sync.gasUrl || !sync.secret) return;
     if (autoSyncTimer.current) clearTimeout(autoSyncTimer.current);
     autoSyncTimer.current = setTimeout(() => {
@@ -565,6 +669,7 @@ export default function App() {
 
   const handleFocus = useCallback((id, text) => {
     setActiveId(id);
+    setSelectedIds([]);
     setDrafts((prev) => (id in prev ? prev : { ...prev, [id]: text }));
   }, []);
 
@@ -576,6 +681,28 @@ export default function App() {
     setDrafts((prev) => ({ ...prev, [id]: value }));
     if (!uiHidden && !settingsOpen) setUiHidden(true);
   }, [settingsOpen, uiHidden]);
+
+  const beginRowSelection = useCallback((event, id) => {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    event.stopPropagation();
+    setUiHidden(false);
+    setActiveId(null);
+    setSelectionAnchorId(id);
+    setSelectedIds([id]);
+    setIsSelectingRows(true);
+  }, []);
+
+  const enterRowSelection = useCallback((id) => {
+    if (!isSelectingRows || !selectionAnchorId) return;
+    const start = visibleIds.indexOf(selectionAnchorId);
+    const end = visibleIds.indexOf(id);
+    if (start < 0 || end < 0) return;
+    const from = Math.min(start, end);
+    const to = Math.max(start, end);
+    setSelectedIds(visibleIds.slice(from, to + 1));
+  }, [isSelectingRows, selectionAnchorId, visibleIds]);
+
 
   const handleKeyDown = useCallback((event, node) => {
     if (isImeEvent(event)) return;
@@ -634,6 +761,35 @@ export default function App() {
       }
     }
   }, [applyTextThen, commitDraft, drafts, focusNode, markChanged, visibleRows]);
+
+  const handleZoomTitleKeyDown = useCallback((event, node) => {
+    if (isImeEvent(event)) return;
+    const currentText = drafts[node.id] ?? node.text ?? "";
+
+    if (event.key === "Enter") {
+      event.preventDefault();
+      const next = makeNode("");
+      applyTextThen(node.id, currentText, (base) => insertChild(base, node.id, next), next.id);
+      setDrafts((prev) => ({ ...prev, [next.id]: "" }));
+      return;
+    }
+
+    if (event.key === "ArrowDown") {
+      const firstChildId = node.children?.[0]?.id;
+      if (firstChildId) {
+        event.preventDefault();
+        commitDraft(node.id);
+        focusNode(firstChildId);
+      }
+      return;
+    }
+
+    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
+      event.preventDefault();
+      setUiHidden(false);
+      setTimeout(() => document.querySelector(".search-input")?.focus(), 0);
+    }
+  }, [applyTextThen, commitDraft, drafts, focusNode]);
 
   const toggleFavorite = useCallback((id) => {
     mutateItems((prev) => {
@@ -964,17 +1120,41 @@ export default function App() {
         </header>
 
         <section className="editor-wrap" onMouseDown={() => setUiHidden(false)}>
-          <div className="editor-header">
+          <div className="editor-header" data-zoomed={zoomRootNode ? "true" : "false"}>
             <div className="zoom-crumbs">
               <button type="button" onClick={() => zoomOutAll(zoomRootId)}>All Notes</button>
               {zoomRootNode && <span>/</span>}
               {zoomRootNode && <strong>{zoomTitle}</strong>}
             </div>
-            <h1>{zoomTitle}</h1>
-            <div className="editor-meta">{zoomRootNode ? "Zoomed" : "All"} · {APP_VERSION_LABEL} · data v{version} · {new Date(updatedAt).toLocaleString()}</div>
+
+            {zoomRootNode ? (
+              <ZoomTitleEditor
+                node={zoomRootNode}
+                query={query}
+                activeId={activeId}
+                drafts={drafts}
+                registerInput={registerInput}
+                onFocus={handleFocus}
+                onBlur={handleBlur}
+                onChange={handleChange}
+                onKeyDown={handleZoomTitleKeyDown}
+                onToggleFavorite={toggleFavorite}
+              />
+            ) : (
+              <h1>All Notes</h1>
+            )}
+
+            <div className="editor-meta">
+              {zoomRootNode ? "Zoomed into this item. Press Enter in the title to add the first child row." : "All"} · {APP_VERSION_LABEL} · data v{version} · {new Date(updatedAt).toLocaleString()}
+            </div>
           </div>
 
           <div className="outline-list">
+            {zoomRootNode && visibleRows.length === 0 && (
+              <button className="empty-zoom-row" type="button" onClick={addRootNode}>
+                ＋ このタイトルの下に最初のブロックを追加
+              </button>
+            )}
             {visibleRows.map(({ node, depth }) => (
               <OutlineRow
                 key={node.id}
@@ -982,6 +1162,7 @@ export default function App() {
                 depth={depth}
                 query={query}
                 activeId={activeId}
+                selected={selectedIdSet.has(node.id)}
                 drafts={drafts}
                 registerInput={registerInput}
                 onFocus={handleFocus}
@@ -991,6 +1172,8 @@ export default function App() {
                 onToggleFavorite={toggleFavorite}
                 onToggleCollapse={toggleCollapse}
                 onZoom={zoomInto}
+                onBeginSelect={beginRowSelection}
+                onEnterSelect={enterRowSelection}
               />
             ))}
           </div>

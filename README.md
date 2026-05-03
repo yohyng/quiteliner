@@ -138,3 +138,10 @@ If Debug Log shows `Unknown action: diagnostics`, the deployed Apps Script is ol
 ## v4.3 note
 
 GAS now detects the Notion database schema and supports `Type` as either `select` or `multi_select`. This avoids the Notion API validation error where a multi-select database property was queried with a select filter.
+
+
+## v4.6.0 Update
+
+- Zoom mode now shows the zoomed item as an editable title, with its children listed underneath.
+- Pressing Enter in the zoom title adds a child row under that title instead of creating a hidden sibling outside the zoom scope.
+- Drag selection from the row grip supports selecting multiple visible rows.
