@@ -2,38 +2,65 @@
 
 ## Current Version
 
-Quietliner v4.5.0
+Quietliner v4.6.1
 
-
-Version: v4.4 Zoom / quick sync / right-side favorite UI patch
+This package is a re-exported v4.6.1 build. The visible app version, `package.json`, `index.html`, and this README are all aligned to v4.6.1 so it is easy to confirm that the deployed app has updated.
 
 Quietliner is a minimal, immersive Workflowy-style outliner note app.
 
 This version is designed for Vercel deployment and uses browser `localStorage` as the primary storage. Optional backup / loose sync is available through GAS → Notion DB.
 
+## v4.6.1 Focus
+
+- Re-exported with all version labels corrected to v4.6.1.
+- README version label is corrected.
+- App top bar, sidebar, editor meta, and Settings show `Quietliner v4.6.1`.
+- Zoom mode is Workflowy-like:
+  - the zoomed block becomes the editable title at the top;
+  - only that block's children appear underneath;
+  - the zoomed block is not duplicated inside the outline list.
+- Pressing Enter on the zoom title creates a new child row under that title instead of creating an invisible sibling outside the zoom context.
+- Favorite sidebar item click zooms into that item.
+- Row star is on the right side.
+- Right-top Sync button is available outside Settings.
+- Row dot button zooms into a block.
+- Left-side row grip supports drag selection for multiple rows.
+
 ## Features
 
 - Vite + React
-- localStorage primary save
+- `localStorage` primary save
 - Workflowy-style nested outliner
 - Favorite-only sidebar
-- Right-top quick Sync button
-- Workflowy-style zoom by clicking the row dot
-- Favorite sidebar items open that node in zoom view
-- Favorite star moved to the right side of each row
-- Minimal UI / immersive mode
-- Esc or top-edge hover to restore UI
-- Font selection: 明朝 / セリフ / サンセリフ / ゴシック
+- Immersive UI that can fade away while writing
+- Esc / top-edge hover to bring UI back
+- Search highlight
+- Font selection
+  - 明朝
+  - セリフ
+  - サンセリフ
+  - ゴシック
 - Light / dark mode
 - Background and text color settings
-- Editor font-size slider
-- Search highlight that remains visible on the active row
-- IME-safe Japanese input guard
-- Empty-line Backspace delete with previous-row focus
-- GAS / Notion Sync
-- Ping / Diagnostics / Push / Pull / Smart Sync
-- Sync Debug Log
+- Editor font-size setting
 - JSON export / import
+- Optional GAS / Notion sync
+- Debug Log for sync actions
+
+## Key Operations
+
+```txt
+Enter: next item
+Shift + Enter: child item
+Tab: indent
+Shift + Tab: outdent
+○ / row dot: zoom into item
+☆: favorite
+Esc / top edge: show UI
+Ctrl / Cmd + K: search
+```
+
+IME composition is guarded so Enter / Tab / Backspace shortcuts do not run while Japanese text is being converted.
 
 ## Development
 
@@ -50,98 +77,83 @@ npm run build
 
 ## Deploy with Vercel
 
-Import this repository into Vercel.
+Import the GitHub repository into Vercel.
 
-If this app is placed at the repository root:
-
-```txt
-Root Directory = ./
-```
-
-If this app is placed inside a `quietliner/` folder:
+If the repository root contains this folder directly:
 
 ```txt
-Root Directory = quietliner
+quietliner_notion_sync_v4_6_1/quietliner
 ```
+
+then set Vercel Root Directory to:
+
+```txt
+quietliner_notion_sync_v4_6_1/quietliner
+```
+
+If you copy only the contents of `quietliner/` to the repository root, leave Root Directory blank.
 
 ## Data Storage
 
-```txt
-localStorage = primary storage
-Notion DB     = backup / loose sync
-GAS           = bridge between app and Notion API
-```
+- Primary: browser `localStorage`
+- Optional cloud backup/sync: GAS Web App → Notion DB
+- Export: JSON download from Settings
 
-## Notion DB Setup
+## Sync Setup
 
-Create a Notion database with these properties:
+1. Create a Notion integration.
+2. Create a Notion database with these properties:
+   - `Name` title
+   - `Type` select or multi_select
+   - `Version` number
+   - `UpdatedAt` date
+   - `Device` rich_text
+   - `Status` select / status / multi_select
+3. Share the Notion database with the integration.
+4. Create a GAS project and paste `gas/Code.gs`.
+5. Add Script Properties:
+   - `NOTION_TOKEN`
+   - `NOTION_DATABASE_ID`
+   - `QUIETLINER_SECRET`
+6. Deploy GAS as Web App.
+7. In Quietliner Settings → GAS / Notion Sync, paste:
+   - GAS Web App URL
+   - Shared Secret
+8. Test in this order:
+   - Ping
+   - Diagnostics
+   - Status
+   - Push
+   - Pull
+   - Smart Sync
 
-```txt
-Name       title
-Type       select OR multi_select
-Version    number
-UpdatedAt  date
-Device     rich_text
-Status     select
-```
+## Notion / GAS Notes
 
-Share the database with your Notion integration.
+The GAS bridge is still labeled v4.3 because the sync bridge was stabilized there. It is compatible with this v4.6.1 frontend.
 
-The full Quietliner payload is stored as chunked JSON code blocks inside one Notion page named `Quietliner Data`. This is more robust than storing the full JSON in a single rich_text property.
-
-## GAS Setup
-
-1. Create a GAS project.
-2. Paste `gas/Code.gs`.
-3. Add Script Properties:
-
-```txt
-NOTION_TOKEN
-NOTION_DATABASE_ID
-QUIETLINER_SECRET
-```
-
-4. Deploy as Web App.
-5. In Quietliner Settings → GAS / Notion Sync, paste:
-
-```txt
-GAS Web App URL
-Shared Secret
-```
-
-`QUIETLINER_SECRET` is not your Notion token. It is a shared password between the Quietliner app and the GAS bridge.
-
-## Shortcuts
+The bridge automatically adapts when `Type` is `multi_select` instead of `select`, fixing the Notion validation error:
 
 ```txt
-Enter: next item
-Shift + Enter: child item
-Tab: indent
-Shift + Tab: outdent
-○: zoom into item
-☆: favorite
-Esc / top edge hover: show UI
-Ctrl / Cmd + K: search
+database property multi_select does not match filter select
 ```
 
-## Notes
+## Included Files
 
-`node_modules`, `dist`, `.env`, and `.vercel` should not be committed.
+```txt
+quietliner_notion_sync_v4_6_1/
+  quietliner/
+    package.json
+    index.html
+    vite.config.js
+    README.md
+    .gitignore
+    src/
+      main.jsx
+      App.jsx
+      index.css
+  gas/
+    Code.gs
+    README.md
+```
 
-This package intentionally does not include `package-lock.json` because the uploaded previous lockfile contained environment-specific internal registry URLs. Run `npm install` locally or let Vercel generate a fresh lockfile.
-## v4.2 note
-
-If Debug Log shows `Unknown action: diagnostics`, the deployed Apps Script is older than the app. Paste `gas/Code.gs` from this package into Apps Script and deploy a new Web App version.
-
-
-
-## v4.3 note
-
-GAS now detects the Notion database schema and supports `Type` as either `select` or `multi_select`. This avoids the Notion API validation error where a multi-select database property was queried with a select filter.
-
-
-## v4.6.0 Update
-
-- Zoom mode now shows the zoomed item as an editable title, with its children listed underneath.
-- Pressing Enter in the zoom title adds a child row under that title instead of creating a hidden sibling outside the zoom scope.
-- Drag selection from the row grip supports selecting multiple visible rows.
+`node_modules`, `dist`, `.git`, and `package-lock.json` are intentionally not included.
