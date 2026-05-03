@@ -223,6 +223,24 @@ button {
   color: color-mix(in srgb, var(--app-text) 82%, transparent);
 }
 
+.sync-top-button {
+  margin-left: auto;
+}
+
+.sync-top-button[data-status="error"] {
+  border-color: color-mix(in srgb, #d45b5b 68%, transparent);
+  color: #d45b5b;
+}
+
+.sync-top-button[data-status="synced"] {
+  border-color: color-mix(in srgb, var(--app-text) 20%, transparent);
+}
+
+.sync-top-button[data-status="syncing..."] {
+  opacity: 0.64;
+  pointer-events: none;
+}
+
 .editor-wrap {
   width: min(920px, calc(100vw - 292px));
   margin: 0 auto;
@@ -231,6 +249,36 @@ button {
 
 .editor-header {
   margin-bottom: 34px;
+}
+
+.zoom-crumbs {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+  color: color-mix(in srgb, var(--app-text) 42%, transparent);
+  font-size: 11px;
+}
+
+.zoom-crumbs button {
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+.zoom-crumbs button:hover {
+  color: var(--app-text);
+}
+
+.zoom-crumbs strong {
+  max-width: min(520px, 68vw);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: color-mix(in srgb, var(--app-text) 58%, transparent);
+  font-weight: 500;
 }
 
 .editor-header h1 {
@@ -253,7 +301,7 @@ button {
 
 .outline-row {
   display: grid;
-  grid-template-columns: calc(var(--depth) * 28px + 54px) minmax(0, 1fr) 42px;
+  grid-template-columns: calc(var(--depth) * 28px + 50px) minmax(0, 1fr) auto;
   align-items: start;
   min-height: 34px;
   border-radius: 12px;
@@ -267,18 +315,21 @@ button {
 .row-gutter {
   display: flex;
   justify-content: flex-end;
-  gap: 4px;
-  padding: 2px 8px 0 0;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 3px 8px 0 0;
 }
 
 .collapse-button,
 .favorite-button,
+.zoom-dot-button,
 .close-button {
   border: 0;
   background: transparent;
   cursor: pointer;
 }
 
+.zoom-dot-button,
 .collapse-button,
 .favorite-button {
   width: 22px;
@@ -287,13 +338,56 @@ button {
   color: color-mix(in srgb, var(--app-text) 46%, transparent);
 }
 
+.zoom-dot-button {
+  display: grid;
+  place-items: center;
+}
+
+.zoom-dot-button span {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.64;
+  transition: transform 120ms ease, opacity 120ms ease, box-shadow 120ms ease;
+}
+
+.zoom-dot-button:hover span {
+  opacity: 1;
+  transform: scale(1.18);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--app-text) 8%, transparent);
+}
+
+.collapse-button {
+  font-size: 14px;
+}
+
 .collapse-button:disabled {
-  opacity: 0.38;
+  opacity: 0;
   cursor: default;
 }
 
+.row-actions {
+  display: flex;
+  align-items: flex-start;
+  gap: 3px;
+  padding: 1px 2px 0 8px;
+}
+
 .favorite-button {
-  opacity: 0.84;
+  opacity: 0.36;
+  font-size: 15px;
+  transition: opacity 120ms ease, transform 120ms ease;
+}
+
+.outline-row:hover .favorite-button,
+.outline-row[data-active="true"] .favorite-button,
+.favorite-button:focus-visible {
+  opacity: 0.88;
+}
+
+.favorite-button:hover {
+  transform: scale(1.08);
 }
 
 .text-shell {
@@ -361,8 +455,8 @@ button {
 }
 
 .char-count {
+  min-width: 24px;
   padding-top: 8px;
-  padding-right: 6px;
   font-size: 10px;
   line-height: 1;
   color: color-mix(in srgb, var(--app-text) 32%, transparent);
@@ -625,7 +719,11 @@ kbd {
   }
 
   .outline-row {
-    grid-template-columns: calc(var(--depth) * 20px + 46px) minmax(0, 1fr) 32px;
+    grid-template-columns: calc(var(--depth) * 20px + 42px) minmax(0, 1fr) auto;
+  }
+
+  .sync-top-button {
+    margin-left: 0;
   }
 
   .settings-grid {

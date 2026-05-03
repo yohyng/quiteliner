@@ -98,6 +98,17 @@ function getNodeByPath(items, path) {
   return node;
 }
 
+function getNodeById(items, id) {
+  if (!id) return null;
+  const path = findPath(items, id);
+  return path ? getNodeByPath(items, path) : null;
+}
+
+function getReadableTitle(node) {
+  const text = String(node?.text || "").trim();
+  return text || "Untitled";
+}
+
 function touchNode(node) {
   node.updatedAt = nowIso();
   return node;
@@ -313,6 +324,7 @@ function OutlineRow({
   onKeyDown,
   onToggleFavorite,
   onToggleCollapse,
+  onZoom,
 }) {
   const textareaRef = useRef(null);
   const value = drafts[node.id] ?? node.text ?? "";
@@ -332,23 +344,25 @@ function OutlineRow({
     <div className="outline-row" data-active={isActive ? "true" : "false"} style={{ "--depth": depth }}>
       <div className="row-gutter">
         <button
+          className="zoom-dot-button"
+          type="button"
+          aria-label="Zoom into this item"
+          title="Zoom"
+          onMouseDown={(event) => event.preventDefault()}
+          onClick={() => onZoom(node.id)}
+        >
+          <span />
+        </button>
+        <button
           className="collapse-button"
           type="button"
           aria-label={node.collapsed ? "Expand" : "Collapse"}
+          title={hasChildren ? (node.collapsed ? "Expand" : "Collapse") : "No children"}
           disabled={!hasChildren}
           onMouseDown={(event) => event.preventDefault()}
           onClick={() => onToggleCollapse(node.id)}
         >
-          {hasChildren ? (node.collapsed ? "›" : "⌄") : "•"}
-        </button>
-        <button
-          className="favorite-button"
-          type="button"
-          aria-label={node.favorite ? "Unfavorite" : "Favorite"}
-          onMouseDown={(event) => event.preventDefault()}
-          onClick={() => onToggleFavorite(node.id)}
-        >
-          {node.favorite ? "★" : "☆"}
+          {hasChildren ? (node.collapsed ? "›" : "⌄") : ""}
         </button>
       </div>
 
@@ -375,8 +389,20 @@ function OutlineRow({
         />
       </div>
 
-      <div className="char-count" title="このブロック配下の文字数">
-        {chars}
+      <div className="row-actions">
+        <span className="char-count" title="このブロック配下の文字数">
+          {chars}
+        </span>
+        <button
+          className="favorite-button"
+          type="button"
+          aria-label={node.favorite ? "Unfavorite" : "Favorite"}
+          title={node.favorite ? "Unfavorite" : "Favorite"}
+          onMouseDown={(event) => event.preventDefault()}
+          onClick={() => onToggleFavorite(node.id)}
+        >
+          {node.favorite ? "★" : "☆"}
+        </button>
       </div>
     </div>
   );
@@ -398,12 +424,18 @@ export default function App() {
   const [syncStatus, setSyncStatus] = useState("local only");
   const [syncLog, setSyncLog] = useState([]);
   const [dirty, setDirty] = useState(false);
+  const [zoomRootId, setZoomRootId] = useState(null);
 
   const inputRefs = useRef(new Map());
   const autoSyncTimer = useRef(null);
 
-  const visibleRows = useMemo(() => flattenVisible(items), [items]);
+  const zoomRootNode = useMemo(() => getNodeById(items, zoomRootId), [items, zoomRootId]);
+  const visibleRows = useMemo(() => {
+    if (zoomRootNode) return flattenVisible([zoomRootNode]);
+    return flattenVisible(items);
+  }, [items, zoomRootNode]);
   const favorites = useMemo(() => collectFavorites(items), [items]);
+  const zoomTitle = zoomRootNode ? getReadableTitle(zoomRootNode) : "All Notes";
   const activeTheme = settings.theme === "dark" ? "dark" : "light";
   const appBackground = activeTheme === "dark" ? settings.bgDark : settings.bgLight;
   const appTextColor = activeTheme === "dark" ? settings.textDark : settings.textLight;
@@ -499,6 +531,12 @@ export default function App() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, []);
+
+  useEffect(() => {
+    if (zoomRootId && !findPath(items, zoomRootId)) {
+      setZoomRootId(null);
+    }
+  }, [items, zoomRootId]);
 
   useEffect(() => {
     if (!sync.autoSync || !dirty || !sync.gasUrl || !sync.secret) return;
@@ -613,11 +651,43 @@ export default function App() {
     }, id);
   }, [mutateItems]);
 
+  const zoomInto = useCallback((id) => {
+    if (!id || !findPath(getCurrentItems(), id)) return;
+    commitDraft(activeId);
+    setZoomRootId(id);
+    setUiHidden(false);
+    focusNode(id);
+  }, [activeId, commitDraft, focusNode, getCurrentItems]);
+
+  const zoomOutAll = useCallback((focusId = null) => {
+    setZoomRootId(null);
+    setUiHidden(false);
+    if (focusId) focusNode(focusId);
+  }, [focusNode]);
+
   const addRootNode = useCallback(() => {
     const node = makeNode("");
-    mutateItems((prev) => [...updateNodeText(prev, activeId, drafts[activeId] ?? getNodeByPath(prev, findPath(prev, activeId) || [])?.text ?? ""), node], node.id);
+    const currentActiveId = activeId;
+    const currentDraft = currentActiveId ? drafts[currentActiveId] : undefined;
+    mutateItems((prev) => {
+      let base = prev;
+      if (currentActiveId && currentDraft !== undefined) {
+        base = updateNodeText(prev, currentActiveId, currentDraft);
+      }
+      if (zoomRootId && findPath(base, zoomRootId)) {
+        const root = cloneItems(base);
+        const path = findPath(root, zoomRootId);
+        const parent = getNodeByPath(root, path);
+        parent.collapsed = false;
+        parent.children = parent.children || [];
+        parent.children.push(node);
+        touchNode(parent);
+        return root;
+      }
+      return [...base, node];
+    }, node.id);
     setDrafts((prev) => ({ ...prev, [node.id]: "" }));
-  }, [activeId, drafts, mutateItems]);
+  }, [activeId, drafts, mutateItems, zoomRootId]);
 
   const buildExportPayload = useCallback(() => ({
     schema: "quietliner.v1",
@@ -637,7 +707,19 @@ export default function App() {
   }), [getCurrentItems, settings, updatedAt, version]);
 
   function explainGasFailure(action, response, text, json) {
-    if (json?.error) return json.error;
+    if (json?.error) {
+      const errorText = String(json.error);
+      if (/unknown action/i.test(errorText)) {
+        return `GAS Code.gs is older than this app. Paste gas/Code.gs from v4.2 into Apps Script and deploy a new Web App version. Original error: ${errorText}`;
+      }
+      if (/shared secret/i.test(errorText)) {
+        return `${errorText}. Check that Settings → Shared Secret matches GAS Script Properties → QUIETLINER_SECRET.`;
+      }
+      if (/notion_token|notion_database_id|notion api/i.test(errorText)) {
+        return `${errorText}. Check GAS Script Properties and whether the Notion database is shared with the integration.`;
+      }
+      return errorText;
+    }
     if (!response.ok) return `HTTP ${response.status}`;
     const trimmed = String(text || "").trim();
     if (trimmed.startsWith("<")) {
@@ -845,15 +927,15 @@ export default function App() {
           <div className="sync-pill" data-status={syncStatus}>{syncStatus}</div>
         </div>
 
-        <button className="all-notes" type="button" onClick={() => focusNode(visibleRows[0]?.node.id)}>
-          All Notes <span>{visibleRows.length}</span>
+        <button className="all-notes" type="button" onClick={() => zoomOutAll(visibleRows[0]?.node.id)}>
+          All Notes <span>{flattenVisible(items).length}</span>
         </button>
 
         <div className="favorite-list">
           <div className="sidebar-label">Favorites</div>
           {favorites.length === 0 && <p className="empty-sidebar">☆を押した項目がここに並びます</p>}
           {favorites.map((favorite) => (
-            <button className="favorite-link" type="button" key={favorite.id} onClick={() => focusNode(favorite.id)}>
+            <button className="favorite-link" type="button" key={favorite.id} onClick={() => zoomInto(favorite.id)}>
               <span className="favorite-title">{favorite.text?.trim() || "Untitled"}</span>
               <span className="favorite-meta">{countChars(favorite, drafts)}</span>
             </button>
@@ -869,14 +951,22 @@ export default function App() {
             onChange={(event) => setQuery(event.target.value)}
             placeholder="Search"
           />
+          <button className="ghost-button sync-top-button" type="button" data-status={syncStatus} onClick={() => smartSync().catch(() => {})}>
+            {syncStatus === "syncing..." ? "Syncing…" : "Sync"}
+          </button>
           <button className="ghost-button" type="button" onClick={addRootNode}>＋ New</button>
           <button className="ghost-button" type="button" onClick={() => { setSettingsOpen(true); setSettingsTab("appearance"); }}>Settings</button>
         </header>
 
         <section className="editor-wrap" onMouseDown={() => setUiHidden(false)}>
           <div className="editor-header">
-            <h1>All Notes</h1>
-            <div className="editor-meta">v{version} · {new Date(updatedAt).toLocaleString()}</div>
+            <div className="zoom-crumbs">
+              <button type="button" onClick={() => zoomOutAll(zoomRootId)}>All Notes</button>
+              {zoomRootNode && <span>/</span>}
+              {zoomRootNode && <strong>{zoomTitle}</strong>}
+            </div>
+            <h1>{zoomTitle}</h1>
+            <div className="editor-meta">{zoomRootNode ? "Zoomed" : "All"} · v{version} · {new Date(updatedAt).toLocaleString()}</div>
           </div>
 
           <div className="outline-list">
@@ -895,6 +985,7 @@ export default function App() {
                 onKeyDown={handleKeyDown}
                 onToggleFavorite={toggleFavorite}
                 onToggleCollapse={toggleCollapse}
+                onZoom={zoomInto}
               />
             ))}
           </div>
@@ -1017,6 +1108,7 @@ export default function App() {
                 <div><kbd>Shift</kbd> + <kbd>Enter</kbd><span>子要素</span></div>
                 <div><kbd>Tab</kbd><span>インデント</span></div>
                 <div><kbd>Shift</kbd> + <kbd>Tab</kbd><span>アウトデント</span></div>
+                <div><kbd>○</kbd><span>Zoom</span></div>
                 <div><kbd>☆</kbd><span>お気に入り</span></div>
                 <div><kbd>Esc</kbd><span>UI表示</span></div>
                 <div><kbd>Ctrl</kbd> / <kbd>⌘</kbd> + <kbd>K</kbd><span>検索</span></div>

@@ -1,6 +1,6 @@
 # Quietliner
 
-Version: v4.1 sync diagnostics patch
+Version: v4.4 Zoom / quick sync / right-side favorite UI patch
 
 Quietliner is a minimal, immersive Workflowy-style outliner note app.
 
@@ -12,6 +12,10 @@ This version is designed for Vercel deployment and uses browser `localStorage` a
 - localStorage primary save
 - Workflowy-style nested outliner
 - Favorite-only sidebar
+- Right-top quick Sync button
+- Workflowy-style zoom by clicking the row dot
+- Favorite sidebar items open that node in zoom view
+- Favorite star moved to the right side of each row
 - Minimal UI / immersive mode
 - Esc or top-edge hover to restore UI
 - Font selection: 明朝 / セリフ / サンセリフ / ゴシック
@@ -69,7 +73,7 @@ Create a Notion database with these properties:
 
 ```txt
 Name       title
-Type       select
+Type       select OR multi_select
 Version    number
 UpdatedAt  date
 Device     rich_text
@@ -109,6 +113,7 @@ Enter: next item
 Shift + Enter: child item
 Tab: indent
 Shift + Tab: outdent
+○: zoom into item
 ☆: favorite
 Esc / top edge hover: show UI
 Ctrl / Cmd + K: search
@@ -119,3 +124,12 @@ Ctrl / Cmd + K: search
 `node_modules`, `dist`, `.env`, and `.vercel` should not be committed.
 
 This package intentionally does not include `package-lock.json` because the uploaded previous lockfile contained environment-specific internal registry URLs. Run `npm install` locally or let Vercel generate a fresh lockfile.
+## v4.2 note
+
+If Debug Log shows `Unknown action: diagnostics`, the deployed Apps Script is older than the app. Paste `gas/Code.gs` from this package into Apps Script and deploy a new Web App version.
+
+
+
+## v4.3 note
+
+GAS now detects the Notion database schema and supports `Type` as either `select` or `multi_select`. This avoids the Notion API validation error where a multi-select database property was queried with a select filter.
