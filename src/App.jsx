@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-const APP_VERSION = "4.7.0";
+const APP_VERSION = "4.8.0";
 const APP_VERSION_LABEL = `Quietliner v${APP_VERSION}`;
 const STORAGE_KEY = "quietliner.state.v4";
 const MAX_LOGS = 80;
@@ -328,6 +328,67 @@ function downloadText(filename, content, type = "application/json") {
   URL.revokeObjectURL(url);
 }
 
+function ensureNodeShape(input, fallbackText = "") {
+  const time = nowIso();
+  const childrenSource = Array.isArray(input?.children)
+    ? input.children
+    : Array.isArray(input?.items)
+      ? input.items
+      : Array.isArray(input?.nodes)
+        ? input.nodes
+        : [];
+  const rawText = input?.text ?? input?.title ?? input?.name ?? input?.content ?? input?.body ?? fallbackText;
+  const textValue = typeof rawText === "string" ? rawText : String(rawText ?? "");
+  return {
+    id: String(input?.id || uid()),
+    text: textValue,
+    favorite: Boolean(input?.favorite || input?.starred),
+    collapsed: Boolean(input?.collapsed),
+    children: childrenSource.map((child) => ensureNodeShape(child)),
+    createdAt: input?.createdAt || time,
+    updatedAt: input?.updatedAt || time,
+  };
+}
+
+function countNodes(items) {
+  if (!Array.isArray(items)) return 0;
+  return items.reduce((sum, node) => sum + 1 + countNodes(node.children || []), 0);
+}
+
+function extractImportItems(parsed) {
+  if (!parsed || typeof parsed !== "object") throw new Error("JSON object not found");
+  const candidates = [
+    parsed.items,
+    parsed.nodes,
+    parsed.outline,
+    parsed.data?.items,
+    parsed.data?.nodes,
+    parsed.payload?.items,
+    parsed.payload?.nodes,
+    parsed.root?.children,
+  ];
+  const source = candidates.find((value) => Array.isArray(value));
+  if (!source) {
+    throw new Error("Importable outline array not found. Supported keys: items, nodes, outline, data.nodes, root.children");
+  }
+  const normalized = source.map((node) => ensureNodeShape(node)).filter(Boolean);
+  if (!normalized.length) throw new Error("No outline blocks found in JSON");
+  return normalized;
+}
+
+function normalizeImportPayload(parsed) {
+  const items = extractImportItems(parsed);
+  const importedSettings = parsed.settings || parsed.data?.settings || parsed.payload?.settings || {};
+  const rootTitle = parsed.rootTitle || importedSettings.rootTitle || parsed.title || parsed.name || null;
+  return {
+    items,
+    settings: importedSettings,
+    rootTitle,
+    version: Number(parsed.version || parsed.data?.version || parsed.payload?.version || 0),
+    updatedAt: parsed.updatedAt || parsed.exportedAt || parsed.data?.updatedAt || parsed.payload?.updatedAt || nowIso(),
+  };
+}
+
 function OutlineRow({
   node,
   depth,
@@ -529,6 +590,8 @@ export default function App() {
   const [selectedIds, setSelectedIds] = useState([]);
   const [selectionAnchorId, setSelectionAnchorId] = useState(null);
   const [isSelectingRows, setIsSelectingRows] = useState(false);
+  const [importText, setImportText] = useState("");
+  const [importStatus, setImportStatus] = useState("");
 
   const inputRefs = useRef(new Map());
   const autoSyncTimer = useRef(null);
@@ -1062,27 +1125,68 @@ export default function App() {
     }
   }
 
+  const applyImportedJson = useCallback((parsed, sourceName = "JSON") => {
+    const normalized = normalizeImportPayload(parsed);
+    const nextSettings = {
+      ...DEFAULT_SETTINGS,
+      ...settings,
+      ...(normalized.settings || {}),
+    };
+    if (normalized.rootTitle) nextSettings.rootTitle = String(normalized.rootTitle);
+
+    setItems(normalized.items);
+    setSettings(nextSettings);
+    setVersion(Number(normalized.version || version + 1));
+    setUpdatedAt(normalized.updatedAt || nowIso());
+    setDrafts({});
+    setActiveId(null);
+    setZoomRootId(null);
+    setSelectedIds([]);
+    setSelectionAnchorId(null);
+    setDirty(true);
+    setSyncStatus("local only");
+    const totalBlocks = countNodes(normalized.items);
+    const message = `${sourceName} import succeeded: ${normalized.items.length} root item(s), ${totalBlocks} block(s)`;
+    setImportStatus(message);
+    appendLog("info", message, {
+      sourceName,
+      rootItems: normalized.items.length,
+      totalBlocks,
+      rootTitle: nextSettings.rootTitle,
+    });
+  }, [appendLog, settings, version]);
+
+  const importJsonText = useCallback((rawText, sourceName = "pasted JSON") => {
+    try {
+      const parsed = JSON.parse(String(rawText || ""));
+      applyImportedJson(parsed, sourceName);
+      return true;
+    } catch (error) {
+      const message = `JSON import failed: ${error.message}`;
+      setImportStatus(message);
+      appendLog("error", "JSON import failed", error.message);
+      return false;
+    }
+  }, [appendLog, applyImportedJson]);
+
   const importJson = useCallback((file) => {
     if (!file) return;
     const reader = new FileReader();
     reader.onload = () => {
-      try {
-        const parsed = JSON.parse(String(reader.result || ""));
-        if (!Array.isArray(parsed.items)) throw new Error("items array not found");
-        setItems(parsed.items);
-        setSettings((prev) => ({ ...prev, ...(parsed.settings || {}) }));
-        setVersion(Number(parsed.version || version + 1));
-        setUpdatedAt(parsed.updatedAt || nowIso());
-        setDrafts({});
-        setDirty(true);
-        setSyncStatus("local only");
-        appendLog("info", "JSON import succeeded", file.name);
-      } catch (error) {
-        appendLog("error", "JSON import failed", error.message);
-      }
+      importJsonText(String(reader.result || ""), file.name || "selected file");
+    };
+    reader.onerror = () => {
+      const message = `JSON import failed: ${reader.error?.message || "file read error"}`;
+      setImportStatus(message);
+      appendLog("error", "JSON import failed", message);
     };
     reader.readAsText(file);
-  }, [appendLog, version]);
+  }, [appendLog, importJsonText]);
+
+  const importPastedJson = useCallback(() => {
+    const ok = importJsonText(importText, "pasted JSON");
+    if (ok) setImportText("");
+  }, [importJsonText, importText]);
 
   const appStyle = {
     "--app-bg": appBackground,
@@ -1273,9 +1377,31 @@ export default function App() {
                 <div className="settings-actions wide">
                   <button type="button" onClick={() => downloadText(`quietliner-${Date.now()}.json`, JSON.stringify(buildExportPayload(), null, 2))}>Export JSON</button>
                   <label className="file-button">
-                    Import JSON
-                    <input type="file" accept="application/json,.json" onChange={(event) => importJson(event.target.files?.[0])} />
+                    Import JSON File
+                    <input
+                      type="file"
+                      accept="application/json,.json"
+                      onChange={(event) => {
+                        importJson(event.target.files?.[0]);
+                        event.target.value = "";
+                      }}
+                    />
                   </label>
+                </div>
+                <div className="import-paste-box wide">
+                  <label>
+                    Paste Import JSON
+                    <textarea
+                      value={importText}
+                      onChange={(event) => setImportText(event.target.value)}
+                      placeholder='JSONをここに貼り付けてから「Import Pasted JSON」を押してください。例: { "nodes": [...] }'
+                    />
+                  </label>
+                  <div className="settings-actions">
+                    <button type="button" onClick={importPastedJson} disabled={!importText.trim()}>Import Pasted JSON</button>
+                    <button type="button" onClick={() => setImportText("")} disabled={!importText}>Clear Paste</button>
+                  </div>
+                  {importStatus ? <p className="import-status">{importStatus}</p> : null}
                 </div>
               </div>
             )}

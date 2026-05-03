@@ -2,16 +2,20 @@
 
 ## Current Version
 
-Quietliner v4.7.0
+Quietliner v4.8.0
 
-This package is a re-exported v4.7.0 build. The visible app version, `package.json`, `index.html`, and this README are all aligned to v4.7.0 so it is easy to confirm that the deployed app has updated.
+This package is a re-exported v4.8.0 build. The visible app version, `package.json`, `index.html`, and this README are all aligned to v4.8.0 so it is easy to confirm that the deployed app has updated.
 
 Quietliner is a minimal, immersive Workflowy-style outliner note app.
 
 This version is designed for Vercel deployment and uses browser `localStorage` as the primary storage. Optional backup / loose sync is available through GAS → Notion DB.
 
-## v4.7.0 Focus
+## v4.8.0 Focus
 
+- JSON Import now accepts `items`, `nodes`, `outline`, `data.nodes`, and `root.children` formats.
+- Paste Import JSON was added for cases where file download/upload is unstable.
+- Import success/failure now appears in Settings and Debug Log, with imported root/block counts.
+- File input resets after each import so the same JSON can be selected again.
 - Root page title can be renamed directly from the editor title area or Settings → Appearance → Root Title.
 - Breadcrumbs now show the full hierarchy path, for example: Root / Diary / Date / Content.
 - Breadcrumb ancestor items are clickable and zoom into that level.
@@ -82,13 +86,13 @@ Import the GitHub repository into Vercel.
 If the repository root contains this folder directly:
 
 ```txt
-quietliner_notion_sync_v4_7/quietliner
+quietliner_notion_sync_v4_8/quietliner
 ```
 
 then set Vercel Root Directory to:
 
 ```txt
-quietliner_notion_sync_v4_7/quietliner
+quietliner_notion_sync_v4_8/quietliner
 ```
 
 If you copy only the contents of `quietliner/` to the repository root, leave Root Directory blank.
@@ -129,7 +133,7 @@ If you copy only the contents of `quietliner/` to the repository root, leave Roo
 
 ## Notion / GAS Notes
 
-The GAS bridge is still labeled v4.3 because the sync bridge was stabilized there. It is compatible with this v4.7.0 frontend.
+The GAS bridge is still labeled v4.3 because the sync bridge was stabilized there. It is compatible with this v4.8.0 frontend.
 
 The bridge automatically adapts when `Type` is `multi_select` instead of `select`, fixing the Notion validation error:
 
@@ -140,7 +144,7 @@ database property multi_select does not match filter select
 ## Included Files
 
 ```txt
-quietliner_notion_sync_v4_7/
+quietliner_notion_sync_v4_8/
   quietliner/
     package.json
     index.html
