@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-const APP_VERSION = "4.6.1";
+const APP_VERSION = "4.7.0";
 const APP_VERSION_LABEL = `Quietliner v${APP_VERSION}`;
 const STORAGE_KEY = "quietliner.state.v4";
 const MAX_LOGS = 80;
@@ -20,6 +20,7 @@ const DEFAULT_SETTINGS = {
   textLight: "#171717",
   bgDark: "#111111",
   textDark: "#eeeeee",
+  rootTitle: "All Notes",
 };
 
 const DEFAULT_SYNC = {
@@ -104,6 +105,20 @@ function getNodeById(items, id) {
   if (!id) return null;
   const path = findPath(items, id);
   return path ? getNodeByPath(items, path) : null;
+}
+
+function findTrail(items, id) {
+  const path = findPath(items, id);
+  if (!path) return [];
+  const trail = [];
+  let list = items;
+  for (const index of path) {
+    const node = list[index];
+    if (!node) break;
+    trail.push(node);
+    list = node.children || [];
+  }
+  return trail;
 }
 
 function getReadableTitle(node) {
@@ -519,6 +534,8 @@ export default function App() {
   const autoSyncTimer = useRef(null);
 
   const zoomRootNode = useMemo(() => getNodeById(items, zoomRootId), [items, zoomRootId]);
+  const zoomTrail = useMemo(() => (zoomRootId ? findTrail(items, zoomRootId) : []), [items, zoomRootId]);
+  const rootTitle = String(settings.rootTitle || "All Notes").trim() || "All Notes";
   const visibleRows = useMemo(() => {
     if (zoomRootNode) return flattenVisible(zoomRootNode.children || []);
     return flattenVisible(items);
@@ -526,7 +543,7 @@ export default function App() {
   const visibleIds = useMemo(() => visibleRows.map(({ node }) => node.id), [visibleRows]);
   const selectedIdSet = useMemo(() => new Set(selectedIds), [selectedIds]);
   const favorites = useMemo(() => collectFavorites(items), [items]);
-  const zoomTitle = zoomRootNode ? getReadableTitle(zoomRootNode) : "All Notes";
+  const zoomTitle = zoomRootNode ? getReadableTitle(zoomRootNode) : rootTitle;
   const activeTheme = settings.theme === "dark" ? "dark" : "light";
   const appBackground = activeTheme === "dark" ? settings.bgDark : settings.bgLight;
   const appTextColor = activeTheme === "dark" ? settings.textDark : settings.textLight;
@@ -861,6 +878,7 @@ export default function App() {
       textLight: settings.textLight,
       bgDark: settings.bgDark,
       textDark: settings.textDark,
+      rootTitle: settings.rootTitle,
     },
   }), [getCurrentItems, settings, updatedAt, version]);
 
@@ -1087,7 +1105,7 @@ export default function App() {
         </div>
 
         <button className="all-notes" type="button" onClick={() => zoomOutAll(visibleRows[0]?.node.id)}>
-          All Notes <span>{flattenVisible(items).length}</span>
+          {rootTitle} <span>{flattenVisible(items).length}</span>
         </button>
 
         <div className="favorite-list">
@@ -1121,10 +1139,21 @@ export default function App() {
 
         <section className="editor-wrap" onMouseDown={() => setUiHidden(false)}>
           <div className="editor-header" data-zoomed={zoomRootNode ? "true" : "false"}>
-            <div className="zoom-crumbs">
-              <button type="button" onClick={() => zoomOutAll(zoomRootId)}>All Notes</button>
-              {zoomRootNode && <span>/</span>}
-              {zoomRootNode && <strong>{zoomTitle}</strong>}
+            <div className="zoom-crumbs" aria-label="Current hierarchy">
+              <button type="button" onClick={() => zoomOutAll(zoomRootId)}>{rootTitle}</button>
+              {zoomTrail.map((trailNode, index) => {
+                const isLast = index === zoomTrail.length - 1;
+                return (
+                  <React.Fragment key={trailNode.id}>
+                    <span>/</span>
+                    {isLast ? (
+                      <strong>{getReadableTitle(trailNode)}</strong>
+                    ) : (
+                      <button type="button" onClick={() => zoomInto(trailNode.id)}>{getReadableTitle(trailNode)}</button>
+                    )}
+                  </React.Fragment>
+                );
+              })}
             </div>
 
             {zoomRootNode ? (
@@ -1141,12 +1170,14 @@ export default function App() {
                 onToggleFavorite={toggleFavorite}
               />
             ) : (
-              <h1>All Notes</h1>
+              <input
+                className="root-title-input"
+                value={rootTitle}
+                aria-label="Root title"
+                spellCheck={false}
+                onChange={(event) => setSettings((prev) => ({ ...prev, rootTitle: event.target.value }))}
+              />
             )}
-
-            <div className="editor-meta">
-              {zoomRootNode ? "Zoomed into this item. Press Enter in the title to add the first child row." : "All"} · {APP_VERSION_LABEL} · data v{version} · {new Date(updatedAt).toLocaleString()}
-            </div>
           </div>
 
           <div className="outline-list">
@@ -1199,6 +1230,10 @@ export default function App() {
 
             {settingsTab === "appearance" && (
               <div className="settings-grid">
+                <label className="wide">
+                  Root Title
+                  <input value={settings.rootTitle || "All Notes"} onChange={(event) => setSettings((prev) => ({ ...prev, rootTitle: event.target.value }))} />
+                </label>
                 <label>
                   Theme
                   <select value={settings.theme} onChange={(event) => setSettings((prev) => ({ ...prev, theme: event.target.value }))}>

@@ -272,10 +272,12 @@ button {
 .zoom-crumbs {
   display: flex;
   align-items: center;
-  gap: 8px;
+  flex-wrap: wrap;
+  gap: 6px;
   margin-bottom: 10px;
   color: color-mix(in srgb, var(--app-text) 42%, transparent);
   font-size: 11px;
+  line-height: 1.7;
 }
 
 .zoom-crumbs button {
@@ -295,15 +297,28 @@ button {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: color-mix(in srgb, var(--app-text) 58%, transparent);
-  font-weight: 500;
+  color: color-mix(in srgb, var(--app-text) 62%, transparent);
+  font-weight: 560;
 }
 
-.editor-header h1 {
-  margin: 0 0 8px;
+.editor-header h1,
+.root-title-input {
+  width: 100%;
+  margin: 0;
+  border: 0;
+  padding: 0 0 6px;
+  background: transparent;
+  color: var(--app-text);
+  outline: 0;
+  font-family: var(--app-font);
   font-size: 19px;
   font-weight: 560;
+  line-height: 1.35;
   letter-spacing: 0.01em;
+}
+
+.root-title-input::selection {
+  background: color-mix(in srgb, var(--app-text) 18%, transparent);
 }
 
 .zoom-title-editor {

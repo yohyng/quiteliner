@@ -2,24 +2,24 @@
 
 ## Current Version
 
-Quietliner v4.6.1
+Quietliner v4.7.0
 
-This package is a re-exported v4.6.1 build. The visible app version, `package.json`, `index.html`, and this README are all aligned to v4.6.1 so it is easy to confirm that the deployed app has updated.
+This package is a re-exported v4.7.0 build. The visible app version, `package.json`, `index.html`, and this README are all aligned to v4.7.0 so it is easy to confirm that the deployed app has updated.
 
 Quietliner is a minimal, immersive Workflowy-style outliner note app.
 
 This version is designed for Vercel deployment and uses browser `localStorage` as the primary storage. Optional backup / loose sync is available through GAS → Notion DB.
 
-## v4.6.1 Focus
+## v4.7.0 Focus
 
-- Re-exported with all version labels corrected to v4.6.1.
-- README version label is corrected.
-- App top bar, sidebar, editor meta, and Settings show `Quietliner v4.6.1`.
-- Zoom mode is Workflowy-like:
+- Root page title can be renamed directly from the editor title area or Settings → Appearance → Root Title.
+- Breadcrumbs now show the full hierarchy path, for example: Root / Diary / Date / Content.
+- Breadcrumb ancestor items are clickable and zoom into that level.
+- The small editor meta line under the title has been removed to keep the writing area quieter.
+- Zoom mode remains Workflowy-like:
   - the zoomed block becomes the editable title at the top;
   - only that block's children appear underneath;
-  - the zoomed block is not duplicated inside the outline list.
-- Pressing Enter on the zoom title creates a new child row under that title instead of creating an invisible sibling outside the zoom context.
+  - pressing Enter on the zoom title creates a child row under that title.
 - Favorite sidebar item click zooms into that item.
 - Row star is on the right side.
 - Right-top Sync button is available outside Settings.
@@ -82,13 +82,13 @@ Import the GitHub repository into Vercel.
 If the repository root contains this folder directly:
 
 ```txt
-quietliner_notion_sync_v4_6_1/quietliner
+quietliner_notion_sync_v4_7/quietliner
 ```
 
 then set Vercel Root Directory to:
 
 ```txt
-quietliner_notion_sync_v4_6_1/quietliner
+quietliner_notion_sync_v4_7/quietliner
 ```
 
 If you copy only the contents of `quietliner/` to the repository root, leave Root Directory blank.
@@ -129,7 +129,7 @@ If you copy only the contents of `quietliner/` to the repository root, leave Roo
 
 ## Notion / GAS Notes
 
-The GAS bridge is still labeled v4.3 because the sync bridge was stabilized there. It is compatible with this v4.6.1 frontend.
+The GAS bridge is still labeled v4.3 because the sync bridge was stabilized there. It is compatible with this v4.7.0 frontend.
 
 The bridge automatically adapts when `Type` is `multi_select` instead of `select`, fixing the Notion validation error:
 
@@ -140,7 +140,7 @@ database property multi_select does not match filter select
 ## Included Files
 
 ```txt
-quietliner_notion_sync_v4_6_1/
+quietliner_notion_sync_v4_7/
   quietliner/
     package.json
     index.html
