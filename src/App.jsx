@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-const APP_VERSION = "4.8.1";
+const APP_VERSION = "4.9.0";
 const APP_VERSION_LABEL = `Quietliner v${APP_VERSION}`;
 const STORAGE_KEY = "quietliner.state.v4";
 const MAX_LOGS = 80;
@@ -124,6 +124,17 @@ function findTrail(items, id) {
 function getReadableTitle(node) {
   const text = String(node?.text || "").trim();
   return text || "Untitled";
+}
+
+function truncateTitle(text, max = 18) {
+  const normalized = String(text || "Untitled").replace(/\s+/g, " ").trim() || "Untitled";
+  return normalized.length > max ? `${normalized.slice(0, max)}…` : normalized;
+}
+
+function hasStoredBody(node) {
+  const own = String(node?.text || "");
+  const childTextLength = (node?.children || []).reduce((sum, child) => sum + countChars(child), 0);
+  return Boolean(own.includes("\n") || own.length > 80 || childTextLength > 40);
 }
 
 function touchNode(node) {
@@ -376,6 +387,80 @@ function extractImportItems(parsed) {
   return normalized;
 }
 
+function rekeyImportedNode(node) {
+  return {
+    ...node,
+    id: uid(),
+    children: Array.isArray(node.children) ? node.children.map(rekeyImportedNode) : [],
+  };
+}
+
+function appendImportedItems(existingItems, importedItems) {
+  const root = cloneItems(existingItems);
+  const imports = cloneItems(importedItems).map(rekeyImportedNode);
+  imports.forEach((incoming) => {
+    const incomingTitle = String(incoming.text || "").trim().toLowerCase();
+    const shouldMergeDiary = incomingTitle === "diary" && Array.isArray(incoming.children) && incoming.children.length;
+    if (shouldMergeDiary) {
+      const existingDiary = root.find((item) => String(item.text || "").trim().toLowerCase() === "diary");
+      if (existingDiary) {
+        existingDiary.children = existingDiary.children || [];
+        existingDiary.children.push(...incoming.children);
+        existingDiary.favorite = existingDiary.favorite || incoming.favorite;
+        existingDiary.collapsed = false;
+        touchNode(existingDiary);
+        return;
+      }
+    }
+    root.push(incoming);
+  });
+  return root.length ? root : [makeNode("")];
+}
+
+function removeNodeById(items, id) {
+  const root = cloneItems(items);
+  const path = findPath(root, id);
+  if (!path) return { items: root, node: null };
+  const list = getListByParentPath(root, path.slice(0, -1));
+  const [node] = list.splice(path[path.length - 1], 1);
+  return { items: root, node };
+}
+
+function isDescendantPath(sourcePath, targetPath) {
+  if (!sourcePath || !targetPath) return false;
+  if (targetPath.length <= sourcePath.length) return false;
+  return sourcePath.every((value, index) => targetPath[index] === value);
+}
+
+function moveNode(items, draggedId, targetId, mode = "after") {
+  if (!draggedId || !targetId || draggedId === targetId) return items;
+  const original = cloneItems(items);
+  const sourcePath = findPath(original, draggedId);
+  const targetPath = findPath(original, targetId);
+  if (!sourcePath || !targetPath || isDescendantPath(sourcePath, targetPath)) return original;
+
+  const removed = removeNodeById(original, draggedId);
+  if (!removed.node) return original;
+  const root = removed.items;
+  const freshTargetPath = findPath(root, targetId);
+  if (!freshTargetPath) return original;
+
+  if (mode === "child") {
+    const target = getNodeByPath(root, freshTargetPath);
+    target.children = target.children || [];
+    target.children.unshift(removed.node);
+    target.collapsed = false;
+    touchNode(target);
+    return root;
+  }
+
+  const list = getListByParentPath(root, freshTargetPath.slice(0, -1));
+  const targetIndex = freshTargetPath[freshTargetPath.length - 1];
+  const insertIndex = mode === "before" ? targetIndex : targetIndex + 1;
+  list.splice(insertIndex, 0, removed.node);
+  return root;
+}
+
 function normalizeImportPayload(parsed) {
   const items = extractImportItems(parsed);
   const importedSettings = parsed.settings || parsed.data?.settings || parsed.payload?.settings || {};
@@ -463,6 +548,11 @@ function OutlineRow({
   onZoom,
   onBeginSelect,
   onEnterSelect,
+  onDragStartRow,
+  onDragOverRow,
+  onDropRow,
+  onDragEndRow,
+  dragOver,
 }) {
   const textareaRef = useRef(null);
   const value = drafts[node.id] ?? node.text ?? "";
@@ -470,6 +560,7 @@ function OutlineRow({
   const isActive = activeId === node.id;
   const chars = countChars(node, drafts);
   const hasChildren = Boolean(node.children?.length);
+  const hasBody = hasStoredBody(node);
 
   useEffect(() => {
     const el = textareaRef.current;
@@ -483,8 +574,12 @@ function OutlineRow({
       className="outline-row"
       data-active={isActive ? "true" : "false"}
       data-selected={selected ? "true" : "false"}
+      data-drag-over={dragOver || ""}
       style={{ "--depth": depth }}
       onPointerEnter={() => onEnterSelect(node.id)}
+      onDragOver={(event) => onDragOverRow(event, node.id)}
+      onDrop={(event) => onDropRow(event, node.id)}
+      onDragEnd={onDragEndRow}
     >
       <div className="row-gutter">
         <button
@@ -497,7 +592,18 @@ function OutlineRow({
           <span />
         </button>
         <button
-          className="zoom-dot-button"
+          className="drag-grip"
+          type="button"
+          draggable
+          aria-label="Move this row"
+          title="Drag to move / Shift-drag onto a row to make it a child"
+          onDragStart={(event) => onDragStartRow(event, node.id)}
+          onDragEnd={onDragEndRow}
+        >
+          ⋮
+        </button>
+        <button
+          className={`zoom-dot-button ${hasBody ? "has-body" : ""}`}
           type="button"
           aria-label="Zoom into this item"
           title="Zoom"
@@ -647,8 +753,11 @@ export default function App() {
   const [selectedIds, setSelectedIds] = useState([]);
   const [selectionAnchorId, setSelectionAnchorId] = useState(null);
   const [isSelectingRows, setIsSelectingRows] = useState(false);
+  const [draggingId, setDraggingId] = useState(null);
+  const [dragOverState, setDragOverState] = useState(null);
   const [importText, setImportText] = useState("");
   const [importStatus, setImportStatus] = useState("");
+  const [importMode, setImportMode] = useState("append");
 
   const inputRefs = useRef(new Map());
   const autoSyncTimer = useRef(null);
@@ -840,19 +949,68 @@ export default function App() {
     setSelectedIds(visibleIds.slice(from, to + 1));
   }, [isSelectingRows, selectionAnchorId, visibleIds]);
 
+  const getDropMode = useCallback((event) => {
+    const rect = event.currentTarget.getBoundingClientRect();
+    const y = event.clientY - rect.top;
+    if (event.shiftKey || event.clientX - rect.left > rect.width * 0.34) return "child";
+    if (y < rect.height * 0.35) return "before";
+    if (y > rect.height * 0.65) return "after";
+    return "after";
+  }, []);
+
+  const handleDragStartRow = useCallback((event, id) => {
+    event.stopPropagation();
+    setDraggingId(id);
+    setDragOverState(null);
+    setSelectedIds([id]);
+    try {
+      event.dataTransfer.effectAllowed = "move";
+      event.dataTransfer.setData("text/plain", id);
+    } catch {
+      // noop
+    }
+  }, []);
+
+  const handleDragOverRow = useCallback((event, id) => {
+    if (!draggingId || draggingId === id) return;
+    event.preventDefault();
+    const mode = getDropMode(event);
+    setDragOverState({ id, mode });
+    try {
+      event.dataTransfer.dropEffect = "move";
+    } catch {
+      // noop
+    }
+  }, [draggingId, getDropMode]);
+
+  const handleDropRow = useCallback((event, id) => {
+    if (!draggingId || draggingId === id) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const mode = dragOverState?.id === id ? dragOverState.mode : getDropMode(event);
+    mutateItems((prev) => moveNode(prev, draggingId, id, mode), draggingId);
+    setDraggingId(null);
+    setDragOverState(null);
+  }, [dragOverState, draggingId, getDropMode, mutateItems]);
+
+  const handleDragEndRow = useCallback(() => {
+    setDraggingId(null);
+    setDragOverState(null);
+  }, []);
+
 
   const handleKeyDown = useCallback((event, node) => {
     if (isImeEvent(event)) return;
     const currentText = drafts[node.id] ?? node.text ?? "";
 
     if (event.key === "Enter") {
+      if (event.shiftKey) {
+        // Shift+Enter is an in-block line break. Let the textarea handle it naturally.
+        return;
+      }
       event.preventDefault();
       const next = makeNode("");
-      if (event.shiftKey) {
-        applyTextThen(node.id, currentText, (base) => insertChild(base, node.id, next), next.id);
-      } else {
-        applyTextThen(node.id, currentText, (base) => insertSiblingAfter(base, node.id, next), next.id);
-      }
+      applyTextThen(node.id, currentText, (base) => insertSiblingAfter(base, node.id, next), next.id);
       setDrafts((prev) => ({ ...prev, [next.id]: "" }));
       return;
     }
@@ -904,6 +1062,10 @@ export default function App() {
     const currentText = drafts[node.id] ?? node.text ?? "";
 
     if (event.key === "Enter") {
+      if (event.shiftKey) {
+        // Shift+Enter is an in-block line break, even in Zoom title mode.
+        return;
+      }
       event.preventDefault();
       const next = makeNode("");
       applyTextThen(node.id, currentText, (base) => insertChild(base, node.id, next), next.id);
@@ -1184,34 +1346,53 @@ export default function App() {
 
   const applyImportedJson = useCallback((parsed, sourceName = "JSON") => {
     const normalized = normalizeImportPayload(parsed);
-    const nextSettings = {
-      ...DEFAULT_SETTINGS,
-      ...settings,
-      ...(normalized.settings || {}),
-    };
-    if (normalized.rootTitle) nextSettings.rootTitle = String(normalized.rootTitle);
+    const importedBlocks = countNodes(normalized.items);
+    const shouldReplace = importMode === "replace";
 
-    setItems(normalized.items);
-    setSettings(nextSettings);
-    setVersion(Number(normalized.version || version + 1));
-    setUpdatedAt(normalized.updatedAt || nowIso());
+    if (shouldReplace) {
+      const nextSettings = {
+        ...DEFAULT_SETTINGS,
+        ...settings,
+        ...(normalized.settings || {}),
+      };
+      if (normalized.rootTitle) nextSettings.rootTitle = String(normalized.rootTitle);
+
+      setItems(normalized.items);
+      setSettings(nextSettings);
+      setVersion(Number(normalized.version || version + 1));
+      setUpdatedAt(normalized.updatedAt || nowIso());
+      setZoomRootId(null);
+      const message = `${sourceName} replace import succeeded: ${normalized.items.length} root item(s), ${importedBlocks} block(s)`;
+      setImportStatus(message);
+      appendLog("info", message, {
+        sourceName,
+        mode: "replace",
+        rootItems: normalized.items.length,
+        importedBlocks,
+        rootTitle: nextSettings.rootTitle,
+      });
+    } else {
+      setItems((prev) => appendImportedItems(prev, normalized.items));
+      setVersion((prev) => prev + 1);
+      setUpdatedAt(nowIso());
+      setZoomRootId(null);
+      const message = `${sourceName} append import succeeded: added ${normalized.items.length} root item(s), ${importedBlocks} block(s)`;
+      setImportStatus(message);
+      appendLog("info", message, {
+        sourceName,
+        mode: "append",
+        rootItems: normalized.items.length,
+        importedBlocks,
+      });
+    }
+
     setDrafts({});
     setActiveId(null);
-    setZoomRootId(null);
     setSelectedIds([]);
     setSelectionAnchorId(null);
     setDirty(true);
     setSyncStatus("local only");
-    const totalBlocks = countNodes(normalized.items);
-    const message = `${sourceName} import succeeded: ${normalized.items.length} root item(s), ${totalBlocks} block(s)`;
-    setImportStatus(message);
-    appendLog("info", message, {
-      sourceName,
-      rootItems: normalized.items.length,
-      totalBlocks,
-      rootTitle: nextSettings.rootTitle,
-    });
-  }, [appendLog, settings, version]);
+  }, [appendLog, importMode, settings, version]);
 
   const importJsonText = useCallback((rawText, sourceName = "pasted data") => {
     const raw = String(rawText || "").trim();
@@ -1323,16 +1504,18 @@ export default function App() {
         <section className="editor-wrap" onMouseDown={() => setUiHidden(false)}>
           <div className="editor-header" data-zoomed={zoomRootNode ? "true" : "false"}>
             <div className="zoom-crumbs" aria-label="Current hierarchy">
-              <button type="button" onClick={() => zoomOutAll(zoomRootId)}>{rootTitle}</button>
+              <button type="button" title={rootTitle} onClick={() => zoomOutAll(zoomRootId)}>{truncateTitle(rootTitle, 16)}</button>
               {zoomTrail.map((trailNode, index) => {
                 const isLast = index === zoomTrail.length - 1;
+                const fullTitle = getReadableTitle(trailNode);
+                const shortTitle = truncateTitle(fullTitle, 18);
                 return (
                   <React.Fragment key={trailNode.id}>
                     <span>/</span>
                     {isLast ? (
-                      <strong>{getReadableTitle(trailNode)}</strong>
+                      <strong title={fullTitle}>{shortTitle}</strong>
                     ) : (
-                      <button type="button" onClick={() => zoomInto(trailNode.id)}>{getReadableTitle(trailNode)}</button>
+                      <button type="button" title={fullTitle} onClick={() => zoomInto(trailNode.id)}>{shortTitle}</button>
                     )}
                   </React.Fragment>
                 );
@@ -1388,6 +1571,11 @@ export default function App() {
                 onZoom={zoomInto}
                 onBeginSelect={beginRowSelection}
                 onEnterSelect={enterRowSelection}
+                onDragStartRow={handleDragStartRow}
+                onDragOverRow={handleDragOverRow}
+                onDropRow={handleDropRow}
+                onDragEndRow={handleDragEndRow}
+                dragOver={dragOverState?.id === node.id ? dragOverState.mode : ""}
               />
             ))}
           </div>
@@ -1468,6 +1656,16 @@ export default function App() {
                   </label>
                 </div>
                 <div className="import-paste-box wide">
+                  <div className="import-mode-row" role="group" aria-label="Import mode">
+                    <label>
+                      <input type="radio" name="import-mode" value="append" checked={importMode === "append"} onChange={() => setImportMode("append")} />
+                      Append to current outline
+                    </label>
+                    <label>
+                      <input type="radio" name="import-mode" value="replace" checked={importMode === "replace"} onChange={() => setImportMode("replace")} />
+                      Replace current outline
+                    </label>
+                  </div>
                   <label>
                     Paste Import JSON / Diary Text
                     <textarea
@@ -1477,7 +1675,7 @@ export default function App() {
                     />
                   </label>
                   <div className="settings-actions">
-                    <button type="button" onClick={importPastedJson} disabled={!importText.trim()}>Import Pasted Data</button>
+                    <button type="button" onClick={importPastedJson} disabled={!importText.trim()}>{importMode === "append" ? "Append Pasted Data" : "Replace with Pasted Data"}</button>
                     <button type="button" onClick={() => setImportText("")} disabled={!importText}>Clear Paste</button>
                   </div>
                   {importStatus ? <p className="import-status">{importStatus}</p> : null}
@@ -1537,7 +1735,7 @@ export default function App() {
             {settingsTab === "shortcuts" && (
               <div className="shortcut-list">
                 <div><kbd>Enter</kbd><span>次の項目</span></div>
-                <div><kbd>Shift</kbd> + <kbd>Enter</kbd><span>子要素</span></div>
+                <div><kbd>Shift</kbd> + <kbd>Enter</kbd><span>ブロック内改行</span></div>
                 <div><kbd>Tab</kbd><span>インデント</span></div>
                 <div><kbd>Shift</kbd> + <kbd>Tab</kbd><span>アウトデント</span></div>
                 <div><kbd>○</kbd><span>Zoom</span></div>

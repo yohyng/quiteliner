@@ -2,71 +2,27 @@
 
 ## Current Version
 
-Quietliner v4.8.1
+Quietliner v4.9.0
 
-This package is a re-exported v4.8.1 build. The visible app version, `package.json`, `index.html`, and this README are all aligned to v4.8.1 so it is easy to confirm that the deployed app has updated.
+This package is a re-exported v4.9.0 build. The visible app version, `package.json`, `index.html`, `VERSION.txt`, and this README are all aligned to v4.9.0.
 
 Quietliner is a minimal, immersive Workflowy-style outliner note app.
 
 This version is designed for Vercel deployment and uses browser `localStorage` as the primary storage. Optional backup / loose sync is available through GAS → Notion DB.
 
-## v4.8.1 Focus
+## v4.9.0 Focus
 
-- Paste Import now accepts raw diary text separated by date lines such as `2026/01/02`, so large JSON copy/paste is no longer required.
-- When pasted JSON is incomplete, the import error now explains that the JSON may be truncated and suggests pasting raw diary text instead.
-- JSON Import now accepts `items`, `nodes`, `outline`, `data.nodes`, and `root.children` formats.
-- Paste Import JSON was added for cases where file download/upload is unstable.
-- Import success/failure now appears in Settings and Debug Log, with imported root/block counts.
-- File input resets after each import so the same JSON can be selected again.
-- Root page title can be renamed directly from the editor title area or Settings → Appearance → Root Title.
-- Breadcrumbs now show the full hierarchy path, for example: Root / Diary / Date / Content.
-- Breadcrumb ancestor items are clickable and zoom into that level.
-- The small editor meta line under the title has been removed to keep the writing area quieter.
-- Zoom mode remains Workflowy-like:
-  - the zoomed block becomes the editable title at the top;
-  - only that block's children appear underneath;
-  - pressing Enter on the zoom title creates a child row under that title.
+- Import now defaults to **append** instead of replacing the current outline.
+- A Replace mode remains available when you intentionally want to overwrite the current outline.
+- Diary imports are appended as `Diary / Date / Body`; if a root `Diary` already exists, new dates are appended under it.
+- Blocks that contain longer body text or child body text show a ring around the zoom dot.
+- Rows can be moved by dragging the new grip; drop above/below to reorder, or hold Shift / drag farther right to make it a child.
+- Breadcrumb labels are shortened when long, while the full label remains available in the tooltip.
+- `Shift + Enter` now inserts a line break inside the current block.
+- Zoom mode remains Workflowy-like: the zoomed block becomes the editable title and its children appear underneath.
 - Favorite sidebar item click zooms into that item.
-- Row star is on the right side.
-- Right-top Sync button is available outside Settings.
-- Row dot button zooms into a block.
-- Left-side row grip supports drag selection for multiple rows.
-
-## Features
-
-- Vite + React
-- `localStorage` primary save
-- Workflowy-style nested outliner
-- Favorite-only sidebar
-- Immersive UI that can fade away while writing
-- Esc / top-edge hover to bring UI back
-- Search highlight
-- Font selection
-  - 明朝
-  - セリフ
-  - サンセリフ
-  - ゴシック
-- Light / dark mode
-- Background and text color settings
-- Editor font-size setting
-- JSON export / import
-- Optional GAS / Notion sync
-- Debug Log for sync actions
-
-## Key Operations
-
-```txt
-Enter: next item
-Shift + Enter: child item
-Tab: indent
-Shift + Tab: outdent
-○ / row dot: zoom into item
-☆: favorite
-Esc / top edge: show UI
-Ctrl / Cmd + K: search
-```
-
-IME composition is guarded so Enter / Tab / Backspace shortcuts do not run while Japanese text is being converted.
+- Row star remains on the right side.
+- The top-right Sync button remains available.
 
 ## Development
 
@@ -81,40 +37,39 @@ npm run dev
 npm run build
 ```
 
-## Deploy with Vercel
+## Deploy
 
-Import the GitHub repository into Vercel.
+Deploy with Vercel by importing this GitHub repository.
 
-If the repository root contains this folder directly:
-
-```txt
-quietliner_notion_sync_v4_8_1/quietliner
-```
-
-then set Vercel Root Directory to:
+If the repository has this shape:
 
 ```txt
-quietliner_notion_sync_v4_8_1/quietliner
+repo/
+  quietliner/
+    package.json
+    index.html
+    src/
+  gas/
+    Code.gs
 ```
 
-If you copy only the contents of `quietliner/` to the repository root, leave Root Directory blank.
+set Vercel Root Directory to:
+
+```txt
+quietliner
+```
 
 ## Data Storage
 
 - Primary: browser `localStorage`
 - Optional cloud backup/sync: GAS Web App → Notion DB
 - Export: JSON download from Settings
+- Import: JSON file, pasted JSON, or pasted diary text
 
 ## Sync Setup
 
 1. Create a Notion integration.
-2. Create a Notion database with these properties:
-   - `Name` title
-   - `Type` select or multi_select
-   - `Version` number
-   - `UpdatedAt` date
-   - `Device` rich_text
-   - `Status` select / status / multi_select
+2. Create a Notion database with properties such as `Name`, `Type`, `Version`, `UpdatedAt`, `Device`, and `Status`.
 3. Share the Notion database with the integration.
 4. Create a GAS project and paste `gas/Code.gs`.
 5. Add Script Properties:
@@ -125,41 +80,3 @@ If you copy only the contents of `quietliner/` to the repository root, leave Roo
 7. In Quietliner Settings → GAS / Notion Sync, paste:
    - GAS Web App URL
    - Shared Secret
-8. Test in this order:
-   - Ping
-   - Diagnostics
-   - Status
-   - Push
-   - Pull
-   - Smart Sync
-
-## Notion / GAS Notes
-
-The GAS bridge is still labeled v4.3 because the sync bridge was stabilized there. It is compatible with this v4.8.1 frontend.
-
-The bridge automatically adapts when `Type` is `multi_select` instead of `select`, fixing the Notion validation error:
-
-```txt
-database property multi_select does not match filter select
-```
-
-## Included Files
-
-```txt
-quietliner_notion_sync_v4_8_1/
-  quietliner/
-    package.json
-    index.html
-    vite.config.js
-    README.md
-    .gitignore
-    src/
-      main.jsx
-      App.jsx
-      index.css
-  gas/
-    Code.gs
-    README.md
-```
-
-`node_modules`, `dist`, `.git`, and `package-lock.json` are intentionally not included.
