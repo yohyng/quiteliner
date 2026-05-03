@@ -283,6 +283,68 @@ function updateNodeById(nodes, id, updater) {
   return changed ? nextNodes : nodes;
 }
 
+function getDeepestVisibleNodeId(node) {
+  if (!node) return null;
+
+  let current = node;
+  while (!current.collapsed && current.children && current.children.length > 0) {
+    current = current.children[current.children.length - 1];
+  }
+
+  return current.id || null;
+}
+
+function getFocusTargetAfterDelete(nodes, id) {
+  const path = findPath(nodes, id);
+  if (!path) return null;
+
+  const list = getAtPath(nodes, getListPathForNode(path));
+  const index = path[path.length - 1];
+
+  if (index > 0) {
+    return getDeepestVisibleNodeId(list[index - 1]);
+  }
+
+  const parentPath = getParentNodePath(path);
+  if (parentPath) {
+    const parent = getAtPath(nodes, parentPath);
+    return parent?.id || null;
+  }
+
+  if (list[index + 1]) {
+    return list[index + 1].id || null;
+  }
+
+  return null;
+}
+
+function summarizeSyncPayload(payload) {
+  const summary = {
+    action: payload?.action || "unknown",
+  };
+
+  if (Array.isArray(payload?.tree)) {
+    summary.treeNodes = flattenCount(payload.tree);
+    summary.treeCharacters = countCharactersInNodes(payload.tree);
+  }
+
+  if (typeof payload?.markdown === "string") {
+    summary.markdownLength = payload.markdown.length;
+  }
+
+  if (payload?.version) summary.version = payload.version;
+  if (payload?.updatedAt) summary.updatedAt = payload.updatedAt;
+  if (payload?.device) summary.device = payload.device;
+
+  return summary;
+}
+
+function truncateText(value, maxLength = 1200) {
+  const text = typeof value === "string" ? value : JSON.stringify(value, null, 2);
+  if (text.length <= maxLength) return text;
+  return `${text.slice(0, maxLength)}\n... truncated ${text.length - maxLength} chars`;
+}
+
 function collectBreadcrumbs(nodes, id) {
   const path = findPath(nodes, id);
   if (!path) return [];
@@ -549,6 +611,18 @@ function runSelfTests() {
     "updateNodeById should preserve root array when no node changes"
   );
   console.assert(
+    getFocusTargetAfterDelete(sample, "b") === "a",
+    "getFocusTargetAfterDelete should focus parent when deleting first child"
+  );
+  console.assert(
+    getFocusTargetAfterDelete(sample, "c") === "b",
+    "getFocusTargetAfterDelete should focus previous visible node when deleting a root sibling"
+  );
+  console.assert(
+    summarizeSyncPayload({ action: "push", tree: sample, markdown: "- A" }).treeNodes === 3,
+    "summarizeSyncPayload should count tree nodes without exposing secret"
+  );
+  console.assert(
     collectBreadcrumbs(sample, "b").map((node) => node.id).join("/") === "a/b",
     "collectBreadcrumbs should return ancestor chain"
   );
@@ -717,12 +791,14 @@ export default function App() {
   const [customBackground, setCustomBackground] = useState("");
   const [customText, setCustomText] = useState("");
   const [fontChoice, setFontChoice] = useState("sans");
+  const [editorFontSize, setEditorFontSize] = useState(15);
   const [immersive, setImmersive] = useState(false);
   const [editorRevision, setEditorRevision] = useState(0);
   const [gasUrl, setGasUrl] = useState("");
   const [syncSecret, setSyncSecret] = useState("");
   const [autoSyncEnabled, setAutoSyncEnabled] = useState(false);
   const [syncStatus, setSyncStatus] = useState("Not synced");
+  const [syncLogs, setSyncLogs] = useState([]);
   const [syncMeta, setSyncMeta] = useState({ version: 0, localUpdatedAt: null, remoteUpdatedAt: null });
   const [dirty, setDirty] = useState(false);
   const inputRefs = useRef({});
@@ -753,6 +829,9 @@ export default function App() {
         }
         if (typeof parsed.customText === "string") setCustomText(parsed.customText);
         if (isValidFontChoice(parsed.fontChoice)) setFontChoice(parsed.fontChoice);
+        if (typeof parsed.editorFontSize === "number") {
+          setEditorFontSize(Math.min(22, Math.max(13, parsed.editorFontSize)));
+        }
       }
 
       const savedSync = readJsonStorage(SYNC_KEY, null);
@@ -796,12 +875,13 @@ export default function App() {
           customBackground,
           customText,
           fontChoice,
+          editorFontSize,
         })
       );
     } catch {
       // noop
     }
-  }, [mode, paletteChoice, customBackground, customText, fontChoice]);
+  }, [mode, paletteChoice, customBackground, customText, fontChoice, editorFontSize]);
 
   useEffect(() => {
     writeJsonStorage(SYNC_KEY, { gasUrl, syncSecret, autoSyncEnabled });
@@ -870,7 +950,9 @@ export default function App() {
     document.documentElement.style.setProperty("--danger", colors.danger);
     document.documentElement.style.setProperty("--overlay", colors.overlay);
     document.documentElement.style.setProperty("--font-editor", editorFontFamily);
-  }, [colors, editorFontFamily]);
+    document.documentElement.style.setProperty("--editor-font-size", `${editorFontSize}px`);
+    document.documentElement.style.setProperty("--editor-line-height", `${Math.round(editorFontSize * 1.85)}px`);
+  }, [colors, editorFontFamily, editorFontSize]);
 
   function chooseMode(nextMode) {
     setMode(nextMode);
@@ -888,6 +970,19 @@ export default function App() {
 
   function maybeRevealChrome(event) {
     if (chromeHidden && event.clientY < 84) revealChrome();
+  }
+
+  function addSyncLog(level, title, details = null) {
+    setSyncLogs((current) => [
+      {
+        id: `log_${Date.now()}_${Math.random().toString(16).slice(2)}`,
+        at: nowIso(),
+        level,
+        title,
+        details: details == null ? "" : truncateText(details),
+      },
+      ...current,
+    ].slice(0, 30));
   }
 
   function markDirty() {
@@ -970,13 +1065,23 @@ export default function App() {
     const path = findPath(tree, id);
     if (!path) return;
 
+    const nextFocusId = getFocusTargetAfterDelete(tree, id);
+
     setTree((current) => {
       const next = deepClone(current);
-      const list = getAtPath(next, getListPathForNode(path));
-      const index = path[path.length - 1];
+      const currentPath = findPath(next, id);
+      if (!currentPath) return current;
+
+      const list = getAtPath(next, getListPathForNode(currentPath));
+      const index = currentPath[currentPath.length - 1];
       list.splice(index, 1);
       return next;
     });
+
+    if (nextFocusId) {
+      setFocusedId(nextFocusId);
+    }
+
     markDirty();
   }
 
@@ -1055,6 +1160,8 @@ export default function App() {
     setCustomBackground("");
     setCustomText("");
     setFontChoice("sans");
+    setEditorFontSize(15);
+    setSyncLogs([]);
     setEditorRevision((value) => value + 1);
     setDirty(true);
 
@@ -1082,29 +1189,83 @@ export default function App() {
 
   function validateSyncSettings() {
     if (!gasUrl.trim()) {
-      setSyncStatus("GAS Web App URLを入力してください");
+      const message = "GAS Web App URLを入力してください";
+      setSyncStatus(message);
+      addSyncLog("warn", "Missing GAS Web App URL", message);
       return false;
     }
     if (!syncSecret.trim()) {
-      setSyncStatus("Shared Secretを入力してください");
+      const message = "Shared Secretを入力してください";
+      setSyncStatus(message);
+      addSyncLog("warn", "Missing Shared Secret", message);
       return false;
     }
     return true;
   }
 
   async function callGas(payload) {
-    const response = await fetch(gasUrl.trim(), {
-      method: "POST",
-      headers: { "Content-Type": "text/plain;charset=utf-8" },
-      body: JSON.stringify({ ...payload, secret: syncSecret }),
-    });
-    const text = await response.text();
+    const action = payload?.action || "unknown";
+    const startedAt = nowIso();
+    addSyncLog("info", `${action} request`, summarizeSyncPayload(payload));
+
     try {
-      const data = JSON.parse(text);
-      if (!data.ok) throw new Error(data.error || "GAS returned ok:false");
+      const response = await fetch(gasUrl.trim(), {
+        method: "POST",
+        headers: { "Content-Type": "text/plain;charset=utf-8" },
+        body: JSON.stringify({ ...payload, secret: syncSecret }),
+      });
+
+      const text = await response.text();
+      let data = null;
+
+      try {
+        data = JSON.parse(text);
+      } catch (parseError) {
+        const details = {
+          action,
+          httpStatus: response.status,
+          responsePreview: text.slice(0, 1200),
+          parseError: parseError.message,
+        };
+        addSyncLog("error", `${action} invalid JSON response`, details);
+        throw new Error(`GAS response was not JSON. HTTP ${response.status}`);
+      }
+
+      if (!response.ok) {
+        const details = {
+          action,
+          httpStatus: response.status,
+          gasResponse: data,
+          responsePreview: text.slice(0, 1200),
+        };
+        addSyncLog("error", `${action} HTTP error`, details);
+        throw new Error(`HTTP ${response.status}: ${data.error || response.statusText}`);
+      }
+
+      if (!data.ok) {
+        const details = {
+          action,
+          httpStatus: response.status,
+          gasResponse: data,
+        };
+        addSyncLog("error", `${action} GAS error`, details);
+        throw new Error(data.error || "GAS returned ok:false");
+      }
+
+      addSyncLog("success", `${action} success`, {
+        action,
+        httpStatus: response.status,
+        elapsedMs: Date.now() - Date.parse(startedAt),
+        response: {
+          ...data,
+          tree: Array.isArray(data.tree) ? `[tree nodes: ${flattenCount(data.tree)}]` : data.tree,
+        },
+      });
+
       return data;
     } catch (error) {
-      throw new Error(`${error.message}\n\nResponse:\n${text.slice(0, 500)}`);
+      addSyncLog("error", `${action} failed`, error.message);
+      throw error;
     }
   }
 
@@ -1116,6 +1277,18 @@ export default function App() {
       setSyncStatus(`OK: ${data.message || "connected"}`);
     } catch (error) {
       setSyncStatus(`Error: ${error.message}`);
+    }
+  }
+
+  async function runDiagnostics() {
+    if (!validateSyncSettings()) return;
+
+    setSyncStatus("Running diagnostics...");
+    try {
+      const data = await callGas({ action: "diagnostics" });
+      setSyncStatus(`Diagnostics OK: ${data.databaseReachable ? "Notion DB reachable" : "Check debug log"}`);
+    } catch (error) {
+      setSyncStatus(`Diagnostics Error: ${error.message}`);
     }
   }
 
@@ -1540,12 +1713,34 @@ export default function App() {
 
                     <div className="sync-actions">
                       <button type="button" onClick={pingGas} className="subtle-button">Ping</button>
+                      <button type="button" onClick={runDiagnostics} className="subtle-button">Diagnostics</button>
                       <button type="button" onClick={() => pushToNotion()} className="subtle-button"><Icon name="upload" size={13} /> Push</button>
                       <button type="button" onClick={() => pullFromNotion()} className="subtle-button"><Icon name="download" size={13} /> Pull</button>
                       <button type="button" onClick={smartSync} className="subtle-button"><Icon name="sync" size={13} /> Smart Sync</button>
                     </div>
 
                     <div className="sync-status">{syncStatus}</div>
+
+                    <div className="sync-log-head">
+                      <span>Debug Log</span>
+                      <button type="button" onClick={() => setSyncLogs([])} className="subtle-button">Clear</button>
+                    </div>
+
+                    <div className="sync-log-list">
+                      {syncLogs.length ? (
+                        syncLogs.map((log) => (
+                          <details key={log.id} className={`sync-log-item ${log.level}`}>
+                            <summary>
+                              <span>{new Date(log.at).toLocaleTimeString()}</span>
+                              <strong>{log.title}</strong>
+                            </summary>
+                            {log.details && <pre>{log.details}</pre>}
+                          </details>
+                        ))
+                      ) : (
+                        <div className="sync-log-empty">まだログはありません。</div>
+                      )}
+                    </div>
                   </div>
                 )}
               </section>
@@ -1636,6 +1831,21 @@ export default function App() {
                     </button>
                   ))}
                 </div>
+              </section>
+
+              <section>
+                <div className="setting-label">Editor Font Size</div>
+                <label className="range-row">
+                  <input
+                    type="range"
+                    min="13"
+                    max="22"
+                    step="1"
+                    value={editorFontSize}
+                    onChange={(event) => setEditorFontSize(Number(event.target.value))}
+                  />
+                  <span>{editorFontSize}px</span>
+                </label>
               </section>
 
               <section>
