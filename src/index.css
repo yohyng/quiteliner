@@ -351,6 +351,8 @@ button {
   font-weight: 560;
   line-height: max(1.15, calc(var(--editor-line-height, 1.55) - 0.3));
   letter-spacing: var(--editor-letter-spacing, 0.01em);
+  text-align: var(--editor-text-align, left);
+  text-align-last: var(--editor-text-align-last, auto);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
@@ -562,6 +564,8 @@ button {
   font-weight: 400;
   line-height: var(--editor-line-height, 1.55);
   letter-spacing: var(--editor-letter-spacing, 0.01em);
+  text-align: var(--editor-text-align, left);
+  text-align-last: var(--editor-text-align-last, auto);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
@@ -1034,7 +1038,7 @@ kbd {
 }
 
 
-/* v5.1.0 additions */
+/* v5.2.0 additions */
 .danger-button {
   border-color: color-mix(in srgb, #b00020 36%, var(--app-text) 12%) !important;
   color: color-mix(in srgb, #b00020 72%, var(--app-text) 28%) !important;

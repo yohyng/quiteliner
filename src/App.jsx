@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-const APP_VERSION = "5.1.0";
+const APP_VERSION = "5.2.0";
 const APP_VERSION_LABEL = `Quietliner v${APP_VERSION}`;
 const STORAGE_KEY = "quietliner.state.v4";
 const MAX_LOGS = 80;
@@ -12,12 +12,21 @@ const FONT_OPTIONS = {
   gothic: '"Yu Gothic", "Hiragino Kaku Gothic ProN", "Noto Sans JP", Meiryo, sans-serif',
 };
 
+const TEXT_ALIGNMENT_OPTIONS = {
+  left: { label: "Left", align: "left", last: "auto" },
+  center: { label: "Center", align: "center", last: "auto" },
+  right: { label: "Right", align: "right", last: "auto" },
+  justify: { label: "Justify", align: "justify", last: "left" },
+  justifyAll: { label: "Justify All", align: "justify", last: "justify" },
+};
+
 const DEFAULT_SETTINGS = {
   theme: "light",
   font: "gothic",
   fontSize: 18,
   lineHeight: 1.55,
   letterSpacing: 0.01,
+  textAlignment: "left",
   bgLight: "#fbfaf7",
   textLight: "#171717",
   bgDark: "#111111",
@@ -1303,6 +1312,7 @@ export default function App() {
         fontSize: settings.fontSize,
         lineHeight: settings.lineHeight,
         letterSpacing: settings.letterSpacing,
+        textAlignment: settings.textAlignment,
         bgLight: settings.bgLight,
         textLight: settings.textLight,
         bgDark: settings.bgDark,
@@ -1654,6 +1664,8 @@ export default function App() {
     if (ok) setImportText("");
   }, [importJsonText, importText]);
 
+  const textAlignment = TEXT_ALIGNMENT_OPTIONS[settings.textAlignment] || TEXT_ALIGNMENT_OPTIONS.left;
+
   const appStyle = {
     "--app-bg": appBackground,
     "--app-text": appTextColor,
@@ -1661,6 +1673,8 @@ export default function App() {
     "--editor-font-size": `${settings.fontSize}px`,
     "--editor-line-height": Number(settings.lineHeight || 1.55),
     "--editor-letter-spacing": `${Number(settings.letterSpacing ?? 0.01)}em`,
+    "--editor-text-align": textAlignment.align,
+    "--editor-text-align-last": textAlignment.last,
   };
 
   return (
@@ -1840,6 +1854,14 @@ export default function App() {
                 <label className="range-field">
                   Letter Spacing <span>{Number(settings.letterSpacing ?? 0.01).toFixed(2)}em</span>
                   <input type="range" min="-0.04" max="0.16" step="0.01" value={settings.letterSpacing ?? 0.01} onChange={(event) => setSettings((prev) => ({ ...prev, letterSpacing: Number(event.target.value) }))} />
+                </label>
+                <label>
+                  Text Alignment
+                  <select value={settings.textAlignment || "left"} onChange={(event) => setSettings((prev) => ({ ...prev, textAlignment: event.target.value }))}>
+                    {Object.entries(TEXT_ALIGNMENT_OPTIONS).map(([key, option]) => (
+                      <option key={key} value={key}>{option.label}</option>
+                    ))}
+                  </select>
                 </label>
                 <label>
                   Light Background
