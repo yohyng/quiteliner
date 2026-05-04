@@ -1034,7 +1034,7 @@ kbd {
 }
 
 
-/* v5.0.0 additions */
+/* v5.1.0 additions */
 .danger-button {
   border-color: color-mix(in srgb, #b00020 36%, var(--app-text) 12%) !important;
   color: color-mix(in srgb, #b00020 72%, var(--app-text) 28%) !important;

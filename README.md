@@ -2,15 +2,15 @@
 
 ## Current Version
 
-Quietliner v5.0.0
+Quietliner v5.1.0
 
-This package is a re-exported v5.0.0 build. The visible app version, `package.json`, `index.html`, `VERSION.txt`, and this README are all aligned to v5.0.0.
+This package is a re-exported v5.1.0 build. The visible app version, `package.json`, `index.html`, `VERSION.txt`, and this README are all aligned to v5.1.0.
 
 Quietliner is a minimal, immersive Workflowy-style outliner note app.
 
 This version is designed for Vercel deployment and uses browser `localStorage` as the primary storage. Optional backup / loose sync is available through GAS → Notion DB.
 
-## v5.0.0 Focus
+## v5.1.0 Focus
 
 - Import now defaults to **append** instead of replacing the current outline.
 - A Replace mode remains available when you intentionally want to overwrite the current outline.
@@ -82,7 +82,7 @@ quietliner
    - Shared Secret
 
 
-## v5.0.0 Updates
+## v5.1.0 Updates
 
 - Safe Smart Sync: blocks starter/empty local data from overwriting remote data.
 - Smart Sync now pulls when local is empty and remote has data, pushes when remote is empty, and merges when both sides have data.
@@ -91,3 +91,15 @@ quietliner
 - Removed the subtle selected-row background highlight.
 - Added Line Height and Letter Spacing settings.
 - Added inline commands: `/today`, `;today`, `/now`, `;now`.
+
+
+## v5.1.0 PWA Updates
+
+This version adds lightweight PWA support for a more immersive writing experience.
+
+- `public/manifest.webmanifest` added
+- PWA icons added under `public/icons/`
+- `index.html` includes Android / iOS standalone app meta tags
+- No aggressive Service Worker cache is included, so Vercel updates remain easy to confirm via `/VERSION.txt`
+
+Install from Chrome / Edge using “Install app”, or from iOS/iPadOS Safari using “Add to Home Screen”.
