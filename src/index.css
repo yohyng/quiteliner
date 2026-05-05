@@ -44,7 +44,7 @@ button {
 
 
 
-/* v5.5.3 de-synchronized long-cycle document background layers */
+/* v5.5.4 smoother long-cycle document background layers */
 .app::before,
 .app::after {
   content: "";
@@ -59,26 +59,30 @@ button {
   background:
     linear-gradient(180deg,
       var(--app-bg) 0%,
-      color-mix(in srgb, var(--app-bg) 96%, white 3%) 12%,
-      color-mix(in srgb, var(--app-bg) 91%, white 6%) 28%,
-      color-mix(in srgb, var(--app-bg) 87%, var(--app-text) 3%) 46%,
-      color-mix(in srgb, var(--app-bg) 92%, white 5%) 64%,
-      color-mix(in srgb, var(--app-bg) 88%, var(--app-text) 2.5%) 82%,
+      color-mix(in srgb, var(--app-bg) 97.4%, white 2.0%) 7%,
+      color-mix(in srgb, var(--app-bg) 95.8%, white 3.2%) 16%,
+      color-mix(in srgb, var(--app-bg) 94.6%, white 4.0%) 27%,
+      color-mix(in srgb, var(--app-bg) 93.0%, var(--app-text) 1.4%) 39%,
+      color-mix(in srgb, var(--app-bg) 92.4%, white 3.0%) 51%,
+      color-mix(in srgb, var(--app-bg) 91.4%, white 4.2%) 62%,
+      color-mix(in srgb, var(--app-bg) 92.8%, var(--app-text) 1.2%) 73%,
+      color-mix(in srgb, var(--app-bg) 94.2%, white 3.1%) 84%,
+      color-mix(in srgb, var(--app-bg) 96.2%, white 1.8%) 93%,
       var(--app-bg) 100%);
-  background-size: 100% 16000px;
+  background-size: 100% 22000px;
   background-repeat: repeat-y;
 }
 
 .app::after {
   z-index: -1;
-  opacity: 0.42;
+  opacity: 0.28;
   mix-blend-mode: multiply;
   background-repeat: repeat, repeat, repeat;
-  background-position: 0 0, 37px 61px, 113px 29px;
+  background-position: 0 0, 41px 67px, 127px 31px;
 }
 
 .theme-dark.app::after {
-  opacity: 0.28;
+  opacity: 0.18;
   mix-blend-mode: screen;
 }
 
@@ -88,26 +92,30 @@ button {
 
 .app[data-bg-style="mist"]::before {
   background:
-    radial-gradient(ellipse at 18% 9%, color-mix(in srgb, white 42%, transparent) 0 6%, transparent 26%),
-    radial-gradient(ellipse at 84% 21%, color-mix(in srgb, white 28%, transparent) 0 5%, transparent 24%),
-    radial-gradient(ellipse at 46% 45%, color-mix(in srgb, var(--app-text) 3.5%, transparent) 0 7%, transparent 30%),
-    radial-gradient(ellipse at 70% 73%, color-mix(in srgb, white 24%, transparent) 0 6%, transparent 28%),
-    radial-gradient(ellipse at 22% 93%, color-mix(in srgb, white 30%, transparent) 0 6%, transparent 28%),
+    radial-gradient(ellipse at 18% 9%, color-mix(in srgb, white 24%, transparent) 0 0%, transparent 34%),
+    radial-gradient(ellipse at 84% 21%, color-mix(in srgb, white 16%, transparent) 0 0%, transparent 32%),
+    radial-gradient(ellipse at 46% 45%, color-mix(in srgb, var(--app-text) 1.8%, transparent) 0 0%, transparent 36%),
+    radial-gradient(ellipse at 70% 73%, color-mix(in srgb, white 14%, transparent) 0 0%, transparent 35%),
+    radial-gradient(ellipse at 22% 93%, color-mix(in srgb, white 18%, transparent) 0 0%, transparent 33%),
     linear-gradient(180deg,
       var(--app-bg) 0%,
-      color-mix(in srgb, var(--app-bg) 94%, white 6%) 18%,
-      color-mix(in srgb, var(--app-bg) 88%, white 10%) 36%,
-      color-mix(in srgb, var(--app-bg) 84%, var(--app-text) 3.8%) 54%,
-      color-mix(in srgb, var(--app-bg) 92%, white 5%) 72%,
-      color-mix(in srgb, var(--app-bg) 90%, var(--app-text) 3%) 88%,
+      color-mix(in srgb, var(--app-bg) 97.6%, white 1.8%) 6%,
+      color-mix(in srgb, var(--app-bg) 96.2%, white 3.0%) 14%,
+      color-mix(in srgb, var(--app-bg) 94.8%, white 4.2%) 24%,
+      color-mix(in srgb, var(--app-bg) 93.6%, white 5.0%) 35%,
+      color-mix(in srgb, var(--app-bg) 92.0%, var(--app-text) 1.4%) 47%,
+      color-mix(in srgb, var(--app-bg) 92.8%, white 3.0%) 58%,
+      color-mix(in srgb, var(--app-bg) 93.8%, white 4.0%) 69%,
+      color-mix(in srgb, var(--app-bg) 94.8%, var(--app-text) 1.1%) 80%,
+      color-mix(in srgb, var(--app-bg) 96.0%, white 2.2%) 90%,
       var(--app-bg) 100%);
   background-size:
-    116% 15437px,
-    109% 16891px,
-    123% 14773px,
-    112% 17219px,
-    118% 15991px,
-    100% 16381px;
+    118% 20731px,
+    111% 21917px,
+    124% 20119px,
+    113% 22397px,
+    119% 21491px,
+    100% 22111px;
   background-position:
     4% 0,
     96% 0,
@@ -120,23 +128,27 @@ button {
 
 .app[data-bg-style="stone"]::before {
   background:
-    radial-gradient(ellipse at 20% 10%, color-mix(in srgb, white 28%, transparent) 0 5%, transparent 28%),
-    radial-gradient(ellipse at 80% 26%, color-mix(in srgb, var(--app-text) 4.5%, transparent) 0 6%, transparent 31%),
-    radial-gradient(ellipse at 40% 66%, color-mix(in srgb, white 18%, transparent) 0 5%, transparent 28%),
-    radial-gradient(ellipse at 68% 91%, color-mix(in srgb, var(--app-text) 3.4%, transparent) 0 6%, transparent 30%),
+    radial-gradient(ellipse at 20% 10%, color-mix(in srgb, white 16%, transparent) 0 0%, transparent 35%),
+    radial-gradient(ellipse at 80% 26%, color-mix(in srgb, var(--app-text) 2.2%, transparent) 0 0%, transparent 36%),
+    radial-gradient(ellipse at 40% 66%, color-mix(in srgb, white 12%, transparent) 0 0%, transparent 34%),
+    radial-gradient(ellipse at 68% 91%, color-mix(in srgb, var(--app-text) 1.8%, transparent) 0 0%, transparent 35%),
     linear-gradient(180deg,
       var(--app-bg) 0%,
-      color-mix(in srgb, var(--app-bg) 94%, white 4%) 20%,
-      color-mix(in srgb, var(--app-bg) 88%, var(--app-text) 4.6%) 42%,
-      color-mix(in srgb, var(--app-bg) 84%, white 7%) 62%,
-      color-mix(in srgb, var(--app-bg) 90%, var(--app-text) 3.4%) 82%,
+      color-mix(in srgb, var(--app-bg) 97.2%, white 1.8%) 8%,
+      color-mix(in srgb, var(--app-bg) 95.8%, white 2.8%) 18%,
+      color-mix(in srgb, var(--app-bg) 94.0%, var(--app-text) 1.3%) 31%,
+      color-mix(in srgb, var(--app-bg) 92.8%, var(--app-text) 1.9%) 43%,
+      color-mix(in srgb, var(--app-bg) 92.0%, white 3.4%) 55%,
+      color-mix(in srgb, var(--app-bg) 91.4%, white 4.2%) 66%,
+      color-mix(in srgb, var(--app-bg) 92.9%, var(--app-text) 1.5%) 77%,
+      color-mix(in srgb, var(--app-bg) 94.8%, white 2.4%) 89%,
       var(--app-bg) 100%);
   background-size:
-    118% 16157px,
-    111% 17603px,
-    121% 15269px,
-    114% 16937px,
-    100% 17191px;
+    118% 21457px,
+    112% 22903px,
+    122% 20669px,
+    115% 22137px,
+    100% 22791px;
   background-position:
     7% 0,
     91% 0,
@@ -148,25 +160,29 @@ button {
 
 .app[data-bg-style="cloud"]::before {
   background:
-    radial-gradient(ellipse at 24% 9%, color-mix(in srgb, white 48%, transparent) 0 7%, transparent 28%),
-    radial-gradient(ellipse at 74% 21%, color-mix(in srgb, white 34%, transparent) 0 6%, transparent 27%),
-    radial-gradient(ellipse at 54% 49%, color-mix(in srgb, var(--app-text) 3.6%, transparent) 0 6%, transparent 32%),
-    radial-gradient(ellipse at 34% 80%, color-mix(in srgb, white 28%, transparent) 0 6%, transparent 29%),
-    radial-gradient(ellipse at 86% 95%, color-mix(in srgb, white 36%, transparent) 0 6%, transparent 28%),
+    radial-gradient(ellipse at 24% 9%, color-mix(in srgb, white 28%, transparent) 0 0%, transparent 35%),
+    radial-gradient(ellipse at 74% 21%, color-mix(in srgb, white 19%, transparent) 0 0%, transparent 34%),
+    radial-gradient(ellipse at 54% 49%, color-mix(in srgb, var(--app-text) 1.8%, transparent) 0 0%, transparent 38%),
+    radial-gradient(ellipse at 34% 80%, color-mix(in srgb, white 15%, transparent) 0 0%, transparent 35%),
+    radial-gradient(ellipse at 86% 95%, color-mix(in srgb, white 20%, transparent) 0 0%, transparent 34%),
     linear-gradient(180deg,
       var(--app-bg) 0%,
-      color-mix(in srgb, var(--app-bg) 93%, white 7%) 22%,
-      color-mix(in srgb, var(--app-bg) 88%, white 9%) 40%,
-      color-mix(in srgb, var(--app-bg) 84%, var(--app-text) 3.6%) 60%,
-      color-mix(in srgb, var(--app-bg) 92%, white 5%) 82%,
+      color-mix(in srgb, var(--app-bg) 97.6%, white 2.0%) 7%,
+      color-mix(in srgb, var(--app-bg) 96.4%, white 3.0%) 18%,
+      color-mix(in srgb, var(--app-bg) 95.2%, white 4.0%) 30%,
+      color-mix(in srgb, var(--app-bg) 94.2%, white 4.8%) 42%,
+      color-mix(in srgb, var(--app-bg) 92.8%, var(--app-text) 1.3%) 55%,
+      color-mix(in srgb, var(--app-bg) 93.6%, white 3.2%) 67%,
+      color-mix(in srgb, var(--app-bg) 94.8%, white 4.0%) 79%,
+      color-mix(in srgb, var(--app-bg) 96.2%, white 2.2%) 91%,
       var(--app-bg) 100%);
   background-size:
-    120% 17333px,
-    113% 18161px,
-    118% 16691px,
-    109% 17749px,
-    124% 15887px,
-    100% 17911px;
+    120% 23233px,
+    114% 24161px,
+    119% 22691px,
+    110% 23749px,
+    124% 21887px,
+    100% 23911px;
   background-position:
     8% 0,
     79% 0,
@@ -179,23 +195,27 @@ button {
 
 .app[data-bg-style="fog"]::before {
   background:
-    radial-gradient(ellipse at 18% 17%, color-mix(in srgb, var(--app-text) 5.8%, transparent) 0 6%, transparent 30%),
-    radial-gradient(ellipse at 82% 22%, color-mix(in srgb, white 27%, transparent) 0 6%, transparent 28%),
-    radial-gradient(ellipse at 50% 68%, color-mix(in srgb, white 17%, transparent) 0 6%, transparent 32%),
-    radial-gradient(ellipse at 76% 92%, color-mix(in srgb, var(--app-text) 4%, transparent) 0 6%, transparent 28%),
+    radial-gradient(ellipse at 18% 17%, color-mix(in srgb, var(--app-text) 2.8%, transparent) 0 0%, transparent 36%),
+    radial-gradient(ellipse at 82% 22%, color-mix(in srgb, white 14%, transparent) 0 0%, transparent 34%),
+    radial-gradient(ellipse at 50% 68%, color-mix(in srgb, white 10%, transparent) 0 0%, transparent 38%),
+    radial-gradient(ellipse at 76% 92%, color-mix(in srgb, var(--app-text) 2.1%, transparent) 0 0%, transparent 34%),
     linear-gradient(180deg,
       var(--app-bg) 0%,
-      color-mix(in srgb, var(--app-bg) 91%, var(--app-text) 4%) 24%,
-      color-mix(in srgb, var(--app-bg) 86%, white 5%) 46%,
-      color-mix(in srgb, var(--app-bg) 80%, var(--app-text) 4.8%) 70%,
-      color-mix(in srgb, var(--app-bg) 92%, white 2%) 88%,
+      color-mix(in srgb, var(--app-bg) 96.8%, var(--app-text) 1.0%) 8%,
+      color-mix(in srgb, var(--app-bg) 95.2%, white 1.8%) 20%,
+      color-mix(in srgb, var(--app-bg) 93.4%, white 2.6%) 34%,
+      color-mix(in srgb, var(--app-bg) 91.8%, var(--app-text) 1.6%) 48%,
+      color-mix(in srgb, var(--app-bg) 90.8%, white 3.0%) 61%,
+      color-mix(in srgb, var(--app-bg) 90.2%, var(--app-text) 1.9%) 73%,
+      color-mix(in srgb, var(--app-bg) 92.4%, white 2.2%) 85%,
+      color-mix(in srgb, var(--app-bg) 95.2%, white 1.4%) 94%,
       var(--app-bg) 100%);
   background-size:
-    117% 16841px,
-    112% 18457px,
-    121% 16123px,
-    115% 17699px,
-    100% 18203px;
+    117% 22841px,
+    112% 24457px,
+    121% 22123px,
+    115% 23699px,
+    100% 24203px;
   background-position:
     12% 0,
     88% 0,
@@ -211,21 +231,21 @@ button {
 
 .app[data-noise-style="gaussian"]::after {
   background-image:
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='487' height='613' viewBox='0 0 487 613'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.013' numOctaves='5' seed='8'/%3E%3CfeGaussianBlur stdDeviation='4.8'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3CfeComponentTransfer%3E%3CfeFuncA type='table' tableValues='0 0.20'/%3E%3C/feComponentTransfer%3E%3C/filter%3E%3Crect width='487' height='613' filter='url(%23n)' opacity='0.95'/%3E%3C/svg%3E");
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='487' height='613' viewBox='0 0 487 613'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.012' numOctaves='5' seed='8'/%3E%3CfeGaussianBlur stdDeviation='5.8'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3CfeComponentTransfer%3E%3CfeFuncA type='table' tableValues='0 0.10'/%3E%3C/feComponentTransfer%3E%3C/filter%3E%3Crect width='487' height='613' filter='url(%23n)' opacity='0.92'/%3E%3C/svg%3E");
   background-size: 487px 613px;
 }
 
 .app[data-noise-style="particle"]::after {
   background-image:
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='173' height='211' viewBox='0 0 173 211'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='1.28' numOctaves='3' seed='12'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3CfeComponentTransfer%3E%3CfeFuncA type='table' tableValues='0 0.24'/%3E%3C/feComponentTransfer%3E%3C/filter%3E%3Crect width='173' height='211' filter='url(%23n)' opacity='0.95'/%3E%3C/svg%3E");
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='173' height='211' viewBox='0 0 173 211'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='1.22' numOctaves='3' seed='12'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3CfeComponentTransfer%3E%3CfeFuncA type='table' tableValues='0 0.12'/%3E%3C/feComponentTransfer%3E%3C/filter%3E%3Crect width='173' height='211' filter='url(%23n)' opacity='0.88'/%3E%3C/svg%3E");
   background-size: 173px 211px;
 }
 
 .app[data-noise-style="mixed"]::after {
   background-image:
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='487' height='613' viewBox='0 0 487 613'%3E%3Cfilter id='m'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.013' numOctaves='5' seed='21'/%3E%3CfeGaussianBlur stdDeviation='4.7'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3CfeComponentTransfer%3E%3CfeFuncA type='table' tableValues='0 0.16'/%3E%3C/feComponentTransfer%3E%3C/filter%3E%3Crect width='487' height='613' filter='url(%23m)' opacity='0.95'/%3E%3C/svg%3E"),
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='173' height='211' viewBox='0 0 173 211'%3E%3Cfilter id='p'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='1.31' numOctaves='3' seed='4'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3CfeComponentTransfer%3E%3CfeFuncA type='table' tableValues='0 0.16'/%3E%3C/feComponentTransfer%3E%3C/filter%3E%3Crect width='173' height='211' filter='url(%23p)' opacity='0.9'/%3E%3C/svg%3E"),
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='269' height='337' viewBox='0 0 269 337'%3E%3Cfilter id='q'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.44' numOctaves='2' seed='31'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3CfeComponentTransfer%3E%3CfeFuncA type='table' tableValues='0 0.06'/%3E%3C/feComponentTransfer%3E%3C/filter%3E%3Crect width='269' height='337' filter='url(%23q)' opacity='0.8'/%3E%3C/svg%3E");
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='487' height='613' viewBox='0 0 487 613'%3E%3Cfilter id='m'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.012' numOctaves='5' seed='21'/%3E%3CfeGaussianBlur stdDeviation='5.6'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3CfeComponentTransfer%3E%3CfeFuncA type='table' tableValues='0 0.08'/%3E%3C/feComponentTransfer%3E%3C/filter%3E%3Crect width='487' height='613' filter='url(%23m)' opacity='0.92'/%3E%3C/svg%3E"),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='173' height='211' viewBox='0 0 173 211'%3E%3Cfilter id='p'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='1.24' numOctaves='3' seed='4'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3CfeComponentTransfer%3E%3CfeFuncA type='table' tableValues='0 0.08'/%3E%3C/feComponentTransfer%3E%3C/filter%3E%3Crect width='173' height='211' filter='url(%23p)' opacity='0.84'/%3E%3C/svg%3E"),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='269' height='337' viewBox='0 0 269 337'%3E%3Cfilter id='q'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.38' numOctaves='2' seed='31'/%3E%3CfeGaussianBlur stdDeviation='1.4'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3CfeComponentTransfer%3E%3CfeFuncA type='table' tableValues='0 0.035'/%3E%3C/feComponentTransfer%3E%3C/filter%3E%3Crect width='269' height='337' filter='url(%23q)' opacity='0.82'/%3E%3C/svg%3E");
   background-size: 487px 613px, 173px 211px, 269px 337px;
 }
 .top-hot-zone {
