@@ -44,7 +44,7 @@ button {
 
 
 
-/* v5.5.1 long-cycle document background layers */
+/* v5.5.3 de-synchronized long-cycle document background layers */
 .app::before,
 .app::after {
   content: "";
@@ -65,7 +65,7 @@ button {
       color-mix(in srgb, var(--app-bg) 92%, white 5%) 64%,
       color-mix(in srgb, var(--app-bg) 88%, var(--app-text) 2.5%) 82%,
       var(--app-bg) 100%);
-  background-size: 100% 10000px;
+  background-size: 100% 16000px;
   background-repeat: repeat-y;
 }
 
@@ -73,7 +73,8 @@ button {
   z-index: -1;
   opacity: 0.42;
   mix-blend-mode: multiply;
-  background-repeat: repeat;
+  background-repeat: repeat, repeat, repeat;
+  background-position: 0 0, 37px 61px, 113px 29px;
 }
 
 .theme-dark.app::after {
@@ -101,13 +102,20 @@ button {
       color-mix(in srgb, var(--app-bg) 90%, var(--app-text) 3%) 88%,
       var(--app-bg) 100%);
   background-size:
-    100% 10800px,
-    100% 10800px,
-    100% 10800px,
-    100% 10800px,
-    100% 10800px,
-    100% 10800px;
-  background-repeat: repeat-y;
+    116% 15437px,
+    109% 16891px,
+    123% 14773px,
+    112% 17219px,
+    118% 15991px,
+    100% 16381px;
+  background-position:
+    4% 0,
+    96% 0,
+    44% 0,
+    72% 0,
+    18% 0,
+    0 0;
+  background-repeat: repeat-y, repeat-y, repeat-y, repeat-y, repeat-y, repeat-y;
 }
 
 .app[data-bg-style="stone"]::before {
@@ -124,12 +132,18 @@ button {
       color-mix(in srgb, var(--app-bg) 90%, var(--app-text) 3.4%) 82%,
       var(--app-bg) 100%);
   background-size:
-    100% 11600px,
-    100% 11600px,
-    100% 11600px,
-    100% 11600px,
-    100% 11600px;
-  background-repeat: repeat-y;
+    118% 16157px,
+    111% 17603px,
+    121% 15269px,
+    114% 16937px,
+    100% 17191px;
+  background-position:
+    7% 0,
+    91% 0,
+    41% 0,
+    69% 0,
+    0 0;
+  background-repeat: repeat-y, repeat-y, repeat-y, repeat-y, repeat-y;
 }
 
 .app[data-bg-style="cloud"]::before {
@@ -147,13 +161,20 @@ button {
       color-mix(in srgb, var(--app-bg) 92%, white 5%) 82%,
       var(--app-bg) 100%);
   background-size:
-    100% 12000px,
-    100% 12000px,
-    100% 12000px,
-    100% 12000px,
-    100% 12000px,
-    100% 12000px;
-  background-repeat: repeat-y;
+    120% 17333px,
+    113% 18161px,
+    118% 16691px,
+    109% 17749px,
+    124% 15887px,
+    100% 17911px;
+  background-position:
+    8% 0,
+    79% 0,
+    53% 0,
+    26% 0,
+    94% 0,
+    0 0;
+  background-repeat: repeat-y, repeat-y, repeat-y, repeat-y, repeat-y, repeat-y;
 }
 
 .app[data-bg-style="fog"]::before {
@@ -170,12 +191,18 @@ button {
       color-mix(in srgb, var(--app-bg) 92%, white 2%) 88%,
       var(--app-bg) 100%);
   background-size:
-    100% 12400px,
-    100% 12400px,
-    100% 12400px,
-    100% 12400px,
-    100% 12400px;
-  background-repeat: repeat-y;
+    117% 16841px,
+    112% 18457px,
+    121% 16123px,
+    115% 17699px,
+    100% 18203px;
+  background-position:
+    12% 0,
+    88% 0,
+    48% 0,
+    76% 0,
+    0 0;
+  background-repeat: repeat-y, repeat-y, repeat-y, repeat-y, repeat-y;
 }
 
 .app[data-noise-style="none"]::after {
@@ -184,21 +211,22 @@ button {
 
 .app[data-noise-style="gaussian"]::after {
   background-image:
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='360' height='360' viewBox='0 0 360 360'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.016' numOctaves='5' seed='8'/%3E%3CfeGaussianBlur stdDeviation='4.5'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3CfeComponentTransfer%3E%3CfeFuncA type='table' tableValues='0 0.24'/%3E%3C/feComponentTransfer%3E%3C/filter%3E%3Crect width='360' height='360' filter='url(%23n)' opacity='0.95'/%3E%3C/svg%3E");
-  background-size: 360px 360px;
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='487' height='613' viewBox='0 0 487 613'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.013' numOctaves='5' seed='8'/%3E%3CfeGaussianBlur stdDeviation='4.8'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3CfeComponentTransfer%3E%3CfeFuncA type='table' tableValues='0 0.20'/%3E%3C/feComponentTransfer%3E%3C/filter%3E%3Crect width='487' height='613' filter='url(%23n)' opacity='0.95'/%3E%3C/svg%3E");
+  background-size: 487px 613px;
 }
 
 .app[data-noise-style="particle"]::after {
   background-image:
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140' viewBox='0 0 140 140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='1.18' numOctaves='3' seed='12'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3CfeComponentTransfer%3E%3CfeFuncA type='table' tableValues='0 0.26'/%3E%3C/feComponentTransfer%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)' opacity='0.95'/%3E%3C/svg%3E");
-  background-size: 140px 140px;
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='173' height='211' viewBox='0 0 173 211'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='1.28' numOctaves='3' seed='12'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3CfeComponentTransfer%3E%3CfeFuncA type='table' tableValues='0 0.24'/%3E%3C/feComponentTransfer%3E%3C/filter%3E%3Crect width='173' height='211' filter='url(%23n)' opacity='0.95'/%3E%3C/svg%3E");
+  background-size: 173px 211px;
 }
 
 .app[data-noise-style="mixed"]::after {
   background-image:
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='420' height='420' viewBox='0 0 420 420'%3E%3Cfilter id='m'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.016' numOctaves='5' seed='21'/%3E%3CfeGaussianBlur stdDeviation='4.5'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3CfeComponentTransfer%3E%3CfeFuncA type='table' tableValues='0 0.18'/%3E%3C/feComponentTransfer%3E%3C/filter%3E%3Crect width='420' height='420' filter='url(%23m)' opacity='0.95'/%3E%3C/svg%3E"),
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='132' height='132' viewBox='0 0 132 132'%3E%3Cfilter id='p'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='1.25' numOctaves='3' seed='4'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3CfeComponentTransfer%3E%3CfeFuncA type='table' tableValues='0 0.18'/%3E%3C/feComponentTransfer%3E%3C/filter%3E%3Crect width='132' height='132' filter='url(%23p)' opacity='0.9'/%3E%3C/svg%3E");
-  background-size: 420px 420px, 132px 132px;
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='487' height='613' viewBox='0 0 487 613'%3E%3Cfilter id='m'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.013' numOctaves='5' seed='21'/%3E%3CfeGaussianBlur stdDeviation='4.7'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3CfeComponentTransfer%3E%3CfeFuncA type='table' tableValues='0 0.16'/%3E%3C/feComponentTransfer%3E%3C/filter%3E%3Crect width='487' height='613' filter='url(%23m)' opacity='0.95'/%3E%3C/svg%3E"),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='173' height='211' viewBox='0 0 173 211'%3E%3Cfilter id='p'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='1.31' numOctaves='3' seed='4'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3CfeComponentTransfer%3E%3CfeFuncA type='table' tableValues='0 0.16'/%3E%3C/feComponentTransfer%3E%3C/filter%3E%3Crect width='173' height='211' filter='url(%23p)' opacity='0.9'/%3E%3C/svg%3E"),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='269' height='337' viewBox='0 0 269 337'%3E%3Cfilter id='q'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.44' numOctaves='2' seed='31'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3CfeComponentTransfer%3E%3CfeFuncA type='table' tableValues='0 0.06'/%3E%3C/feComponentTransfer%3E%3C/filter%3E%3Crect width='269' height='337' filter='url(%23q)' opacity='0.8'/%3E%3C/svg%3E");
+  background-size: 487px 613px, 173px 211px, 269px 337px;
 }
 .top-hot-zone {
   position: fixed;

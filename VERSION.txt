@@ -1,2 +1,2 @@
-Quietliner v5.5.2
+Quietliner v5.5.3
 Build: text alignment settings, lightweight PWA support, standalone install, no aggressive service worker cache
