@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-const APP_VERSION = "5.3.2";
+const APP_VERSION = "5.4.0";
 const APP_VERSION_LABEL = `Quietliner v${APP_VERSION}`;
 const STORAGE_KEY = "quietliner.state.v4";
 const MAX_LOGS = 80;
@@ -22,9 +22,17 @@ const TEXT_ALIGNMENT_OPTIONS = {
 
 const BACKGROUND_STYLE_OPTIONS = {
   solid: { label: "Solid" },
-  mist: { label: "Soft Mist" },
-  stone: { label: "Stone Grain" },
-  cloud: { label: "Cloud Paper" },
+  mist: { label: "Endless Mist" },
+  stone: { label: "Endless Stone" },
+  cloud: { label: "Endless Cloud" },
+  fog: { label: "Deep Fog" },
+};
+
+const BACKGROUND_NOISE_OPTIONS = {
+  none: { label: "None" },
+  gaussian: { label: "Soft Gaussian" },
+  particle: { label: "Fine Particle" },
+  mixed: { label: "Mixed Grain" },
 };
 
 const DEFAULT_SETTINGS = {
@@ -37,6 +45,7 @@ const DEFAULT_SETTINGS = {
   editorWidth: 920,
   sidebarWidth: 252,
   backgroundStyle: "solid",
+  backgroundNoise: "mixed",
   bgLight: "#fbfaf7",
   textLight: "#171717",
   bgDark: "#111111",
@@ -1744,7 +1753,7 @@ export default function App() {
   };
 
   return (
-    <div className={`app theme-${activeTheme} ${uiHidden ? "ui-hidden" : ""}`} style={appStyle} data-bg-style={settings.backgroundStyle || "solid"}>
+    <div className={`app theme-${activeTheme} ${uiHidden ? "ui-hidden" : ""}`} style={appStyle} data-bg-style={settings.backgroundStyle || "solid"} data-noise-style={settings.backgroundNoise || "mixed"}>
       <div className="top-hot-zone" onMouseEnter={() => setUiHidden(false)} />
 
       <aside className="sidebar">
@@ -1942,6 +1951,14 @@ export default function App() {
                   Background Style
                   <select value={settings.backgroundStyle || "solid"} onChange={(event) => setSettings((prev) => ({ ...prev, backgroundStyle: event.target.value }))}>
                     {Object.entries(BACKGROUND_STYLE_OPTIONS).map(([key, option]) => (
+                      <option key={key} value={key}>{option.label}</option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  Background Noise
+                  <select value={settings.backgroundNoise || "mixed"} onChange={(event) => setSettings((prev) => ({ ...prev, backgroundNoise: event.target.value }))}>
+                    {Object.entries(BACKGROUND_NOISE_OPTIONS).map(([key, option]) => (
                       <option key={key} value={key}>{option.label}</option>
                     ))}
                   </select>
