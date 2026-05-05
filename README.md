@@ -2,15 +2,15 @@
 
 ## Current Version
 
-Quietliner v5.5.1
+Quietliner v5.5.2
 
-This package is a re-exported v5.5.1 build. The visible app version, `package.json`, `index.html`, `VERSION.txt`, and this README are all aligned to v5.5.1
+This package is a re-exported v5.5.2 build. The visible app version, `package.json`, `index.html`, `VERSION.txt`, and this README are all aligned to v5.5.2
 
 Quietliner is a minimal, immersive Workflowy-style outliner note app.
 
 This version is designed for Vercel deployment and uses browser `localStorage` as the primary storage. Optional backup / loose sync is available through GAS → Notion DB.
 
-## v5.5.1 Focus
+## v5.5.2 Focus
 
 - Appearance now includes Text Alignment: Left, Center, Right, Justify, and Justify All.
 - Alignment applies to outline block text and Zoom title text.
@@ -84,7 +84,7 @@ quietliner
    - Shared Secret
 
 
-## v5.5.1 Updates
+## v5.5.2 Updates
 
 - Safe Smart Sync: blocks starter/empty local data from overwriting remote data.
 - Smart Sync now pulls when local is empty and remote has data, pushes when remote is empty, and merges when both sides have data.
@@ -95,7 +95,7 @@ quietliner
 - Added inline commands: `/today`, `;today`, `/now`, `;now`.
 
 
-## v5.5.1 PWA Updates
+## v5.5.2 PWA Updates
 
 This version adds lightweight PWA support for a more immersive writing experience.
 
@@ -106,6 +106,6 @@ This version adds lightweight PWA support for a more immersive writing experienc
 
 Install from Chrome / Edge using “Install app”, or from iOS/iPadOS Safari using “Add to Home Screen”.
 
-## v5.5.1 Text Alignment Updates
+## v5.5.2 Text Alignment Updates
 
 Settings → Appearance now includes five paragraph alignment modes: Left, Center, Right, Justify, and Justify All. These are applied through CSS variables so the editor text and Zoom title stay visually consistent.
