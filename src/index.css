@@ -1120,16 +1120,20 @@ kbd {
 }
 
 
-/* v5.3.1 scroll comfort */
+/* v5.3.2 scroll comfort */
 html {
-  scroll-padding-top: 120px;
-  scroll-padding-bottom: 220px;
+  scroll-padding-top: 130px;
+  scroll-padding-bottom: max(360px, 56vh);
+}
+
+.editor-wrap {
+  padding-bottom: max(380px, 58vh);
 }
 
 .outline-list::after {
   content: "";
   display: block;
   flex: 0 0 auto;
-  height: min(42vh, 360px);
+  height: max(360px, 58vh);
   pointer-events: none;
 }

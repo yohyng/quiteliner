@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-const APP_VERSION = "5.3.1";
+const APP_VERSION = "5.3.2";
 const APP_VERSION_LABEL = `Quietliner v${APP_VERSION}`;
 const STORAGE_KEY = "quietliner.state.v4";
 const MAX_LOGS = 80;
@@ -352,21 +352,21 @@ function keepActiveEditorComfortable(el) {
   if (!el || typeof window === "undefined") return;
   window.requestAnimationFrame(() => {
     const rect = el.getBoundingClientRect();
-    const bottomComfort = 180;
-    const topComfort = 96;
+    const bottomComfort = Math.min(420, Math.max(260, viewportHeight * 0.38));
+    const topComfort = 110;
     const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 0;
 
     if (!viewportHeight) return;
 
     if (rect.bottom > viewportHeight - bottomComfort) {
       const delta = rect.bottom - (viewportHeight - bottomComfort);
-      window.scrollBy({ top: Math.min(delta + 24, 360), behavior: "smooth" });
+      window.scrollBy({ top: Math.min(delta + 96, 560), behavior: "auto" });
       return;
     }
 
     if (rect.top < topComfort) {
       const delta = rect.top - topComfort;
-      window.scrollBy({ top: Math.max(delta - 24, -260), behavior: "smooth" });
+      window.scrollBy({ top: Math.max(delta - 48, -320), behavior: "auto" });
     }
   });
 }
