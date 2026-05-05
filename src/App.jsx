@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-const APP_VERSION = "5.2.0";
+const APP_VERSION = "5.3.0";
 const APP_VERSION_LABEL = `Quietliner v${APP_VERSION}`;
 const STORAGE_KEY = "quietliner.state.v4";
 const MAX_LOGS = 80;
@@ -20,6 +20,13 @@ const TEXT_ALIGNMENT_OPTIONS = {
   justifyAll: { label: "Justify All", align: "justify", last: "justify" },
 };
 
+const BACKGROUND_STYLE_OPTIONS = {
+  solid: { label: "Solid" },
+  mist: { label: "Soft Mist" },
+  stone: { label: "Stone Grain" },
+  cloud: { label: "Cloud Paper" },
+};
+
 const DEFAULT_SETTINGS = {
   theme: "light",
   font: "gothic",
@@ -27,6 +34,9 @@ const DEFAULT_SETTINGS = {
   lineHeight: 1.55,
   letterSpacing: 0.01,
   textAlignment: "left",
+  editorWidth: 920,
+  sidebarWidth: 252,
+  backgroundStyle: "solid",
   bgLight: "#fbfaf7",
   textLight: "#171717",
   bgDark: "#111111",
@@ -910,6 +920,7 @@ export default function App() {
 
   const inputRefs = useRef(new Map());
   const autoSyncTimer = useRef(null);
+  const sidebarResizeRef = useRef(null);
 
   const zoomRootNode = useMemo(() => getNodeById(items, zoomRootId), [items, zoomRootId]);
   const zoomTrail = useMemo(() => (zoomRootId ? findTrail(items, zoomRootId) : []), [items, zoomRootId]);
@@ -1664,6 +1675,32 @@ export default function App() {
     if (ok) setImportText("");
   }, [importJsonText, importText]);
 
+  const beginSidebarResize = useCallback((event) => {
+    if (window.innerWidth <= 760) return;
+    event.preventDefault();
+    const startX = event.clientX;
+    const startWidth = Number(settings.sidebarWidth || 252);
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+
+    const handleMove = (moveEvent) => {
+      const delta = moveEvent.clientX - startX;
+      const next = Math.max(196, Math.min(420, Math.round(startWidth + delta)));
+      setSettings((prev) => ({ ...prev, sidebarWidth: next }));
+    };
+
+    const stop = () => {
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+      window.removeEventListener("pointermove", handleMove);
+      window.removeEventListener("pointerup", stop);
+    };
+
+    sidebarResizeRef.current = { handleMove, stop };
+    window.addEventListener("pointermove", handleMove);
+    window.addEventListener("pointerup", stop, { once: true });
+  }, [settings.sidebarWidth]);
+
   const textAlignment = TEXT_ALIGNMENT_OPTIONS[settings.textAlignment] || TEXT_ALIGNMENT_OPTIONS.left;
 
   const appStyle = {
@@ -1675,10 +1712,12 @@ export default function App() {
     "--editor-letter-spacing": `${Number(settings.letterSpacing ?? 0.01)}em`,
     "--editor-text-align": textAlignment.align,
     "--editor-text-align-last": textAlignment.last,
+    "--sidebar-width": `${Math.max(196, Math.min(420, Number(settings.sidebarWidth || 252)))}px`,
+    "--editor-max-width": `${Math.max(560, Math.min(1440, Number(settings.editorWidth || 920)))}px`,
   };
 
   return (
-    <div className={`app theme-${activeTheme} ${uiHidden ? "ui-hidden" : ""}`} style={appStyle}>
+    <div className={`app theme-${activeTheme} ${uiHidden ? "ui-hidden" : ""}`} style={appStyle} data-bg-style={settings.backgroundStyle || "solid"}>
       <div className="top-hot-zone" onMouseEnter={() => setUiHidden(false)} />
 
       <aside className="sidebar">
@@ -1696,7 +1735,7 @@ export default function App() {
 
         <div className="favorite-list">
           <div className="sidebar-label">Favorites</div>
-          {favorites.length === 0 && <p className="empty-sidebar">☆を押した項目がここに並びます</p>}
+          {favorites.length === 0 && <p className="empty-sidebar">お気に入りにした項目がここに並びます</p>}
           {favorites.map((favorite) => (
             <button className="favorite-link" type="button" key={favorite.id} onClick={() => zoomInto(favorite.id)}>
               <span className="favorite-title">{favorite.text?.trim() || "Untitled"}</span>
@@ -1705,6 +1744,7 @@ export default function App() {
           ))}
         </div>
       </aside>
+      <div className="sidebar-resizer" role="separator" aria-orientation="vertical" aria-label="Resize sidebar" onPointerDown={beginSidebarResize} />
 
       <main className="main-panel">
         <header className="topbar">
@@ -1859,6 +1899,22 @@ export default function App() {
                   Text Alignment
                   <select value={settings.textAlignment || "left"} onChange={(event) => setSettings((prev) => ({ ...prev, textAlignment: event.target.value }))}>
                     {Object.entries(TEXT_ALIGNMENT_OPTIONS).map(([key, option]) => (
+                      <option key={key} value={key}>{option.label}</option>
+                    ))}
+                  </select>
+                </label>
+                <label className="range-field">
+                  Editor Width <span>{Math.round(Number(settings.editorWidth || 920))}px</span>
+                  <input type="range" min="560" max="1440" step="20" value={settings.editorWidth || 920} onChange={(event) => setSettings((prev) => ({ ...prev, editorWidth: Number(event.target.value) }))} />
+                </label>
+                <label className="range-field">
+                  Sidebar Width <span>{Math.round(Number(settings.sidebarWidth || 252))}px</span>
+                  <input type="range" min="196" max="420" step="4" value={settings.sidebarWidth || 252} onChange={(event) => setSettings((prev) => ({ ...prev, sidebarWidth: Number(event.target.value) }))} />
+                </label>
+                <label>
+                  Background Style
+                  <select value={settings.backgroundStyle || "solid"} onChange={(event) => setSettings((prev) => ({ ...prev, backgroundStyle: event.target.value }))}>
+                    {Object.entries(BACKGROUND_STYLE_OPTIONS).map(([key, option]) => (
                       <option key={key} value={key}>{option.label}</option>
                     ))}
                   </select>

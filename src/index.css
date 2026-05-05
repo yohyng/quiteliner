@@ -33,11 +33,42 @@ button {
 .app {
   min-height: 100vh;
   display: grid;
-  grid-template-columns: 252px minmax(0, 1fr);
+  grid-template-columns: var(--sidebar-width, 252px) 10px minmax(0, 1fr);
   color: var(--app-text);
   background: var(--app-bg);
   font-family: var(--app-font);
   transition: background 180ms ease, color 180ms ease;
+}
+
+
+.app[data-bg-style="solid"] {
+  background-image: none;
+}
+
+.app[data-bg-style="mist"] {
+  background-image:
+    radial-gradient(circle at 14% 18%, color-mix(in srgb, white 72%, transparent) 0, transparent 38%),
+    radial-gradient(circle at 82% 10%, color-mix(in srgb, white 52%, transparent) 0, transparent 34%),
+    linear-gradient(180deg, color-mix(in srgb, white 16%, transparent), transparent 42%),
+    repeating-linear-gradient(135deg, color-mix(in srgb, var(--app-text) 2.5%, transparent) 0 2px, transparent 2px 6px);
+}
+
+.app[data-bg-style="stone"] {
+  background-image:
+    radial-gradient(circle at 20% 14%, color-mix(in srgb, white 40%, transparent) 0, transparent 34%),
+    radial-gradient(circle at 74% 16%, color-mix(in srgb, black 4%, transparent) 0, transparent 32%),
+    linear-gradient(180deg, color-mix(in srgb, white 10%, transparent), transparent 48%),
+    repeating-linear-gradient(0deg, color-mix(in srgb, var(--app-text) 2%, transparent) 0 1px, transparent 1px 4px),
+    repeating-linear-gradient(90deg, color-mix(in srgb, white 4%, transparent) 0 1px, transparent 1px 5px);
+}
+
+.app[data-bg-style="cloud"] {
+  background-image:
+    radial-gradient(circle at 22% 20%, color-mix(in srgb, white 64%, transparent) 0, transparent 35%),
+    radial-gradient(circle at 72% 14%, color-mix(in srgb, white 54%, transparent) 0, transparent 28%),
+    radial-gradient(circle at 52% 48%, color-mix(in srgb, black 3.5%, transparent) 0, transparent 42%),
+    linear-gradient(180deg, color-mix(in srgb, white 18%, transparent), transparent 58%),
+    repeating-linear-gradient(135deg, color-mix(in srgb, var(--app-text) 1.8%, transparent) 0 2px, transparent 2px 7px);
 }
 
 .top-hot-zone {
@@ -70,6 +101,7 @@ button {
 }
 
 .sidebar {
+  grid-column: 1;
   position: sticky;
   top: 0;
   height: 100vh;
@@ -78,6 +110,43 @@ button {
   background: color-mix(in srgb, var(--app-bg) 92%, transparent);
   backdrop-filter: blur(18px);
   overflow-y: auto;
+}
+
+
+.sidebar-resizer {
+  grid-column: 2;
+  position: relative;
+  cursor: col-resize;
+}
+
+.sidebar-resizer::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 1px;
+  transform: translateX(-50%);
+  background: color-mix(in srgb, var(--app-text) 10%, transparent);
+}
+
+.sidebar-resizer::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 4px;
+  height: 48px;
+  transform: translate(-50%, -50%);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--app-text) 12%, transparent);
+  transition: background 120ms ease, width 120ms ease;
+}
+
+.sidebar-resizer:hover::after,
+.sidebar-resizer:active::after {
+  width: 5px;
+  background: color-mix(in srgb, var(--app-text) 22%, transparent);
 }
 
 .brand-block {
@@ -197,6 +266,7 @@ button {
 }
 
 .main-panel {
+  grid-column: 3;
   min-width: 0;
   display: flex;
   flex-direction: column;
@@ -260,7 +330,7 @@ button {
 }
 
 .editor-wrap {
-  width: min(920px, calc(100vw - 292px));
+  width: min(var(--editor-max-width, 920px), calc(100vw - var(--sidebar-width, 252px) - 104px));
   margin: 0 auto;
   padding: 64px 36px 120px;
 }
@@ -331,7 +401,7 @@ button {
 }
 
 .zoom-title-editor[data-active="true"] {
-  background: color-mix(in srgb, var(--app-text) 4%, transparent);
+  background: transparent;
 }
 
 .zoom-title-shell {
@@ -524,23 +594,26 @@ button {
   cursor: default;
 }
 
-.row-actions {
+.row-actions,
+.zoom-title-actions {
   display: flex;
   align-items: flex-start;
   gap: 3px;
   padding: 1px 2px 0 8px;
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+.outline-row:hover .row-actions,
+.zoom-title-editor:hover .zoom-title-actions,
+.favorite-button:focus-visible {
+  opacity: 0.88;
 }
 
 .favorite-button {
-  opacity: 0.36;
+  opacity: 0.82;
   font-size: 15px;
   transition: opacity 120ms ease, transform 120ms ease;
-}
-
-.outline-row:hover .favorite-button,
-.outline-row[data-active="true"] .favorite-button,
-.favorite-button:focus-visible {
-  opacity: 0.88;
 }
 
 .favorite-button:hover {
@@ -614,13 +687,7 @@ button {
 }
 
 .char-count {
-  min-width: 24px;
-  padding-top: 8px;
-  font-size: 10px;
-  line-height: 1;
-  color: color-mix(in srgb, var(--app-text) 32%, transparent);
-  text-align: right;
-  user-select: none;
+  display: none;
 }
 
 .settings-backdrop {
@@ -850,6 +917,10 @@ kbd {
 @media (max-width: 760px) {
   .app {
     grid-template-columns: 1fr;
+  }
+
+  .sidebar-resizer {
+    display: none;
   }
 
   .sidebar {
