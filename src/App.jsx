@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-const APP_VERSION = "5.5.0";
+const APP_VERSION = "5.5.1";
 const APP_VERSION_LABEL = `Quietliner v${APP_VERSION}`;
 const STORAGE_KEY = "quietliner.state.v4";
 const MAX_LOGS = 80;
@@ -22,10 +22,10 @@ const TEXT_ALIGNMENT_OPTIONS = {
 
 const BACKGROUND_STYLE_OPTIONS = {
   solid: { label: "Solid" },
-  mist: { label: "Document Mist" },
-  stone: { label: "Document Stone" },
-  cloud: { label: "Document Cloud" },
-  fog: { label: "Document Fog" },
+  mist: { label: "Long Mist" },
+  stone: { label: "Long Stone" },
+  cloud: { label: "Long Cloud" },
+  fog: { label: "Long Fog" },
 };
 
 const BACKGROUND_NOISE_OPTIONS = {
