@@ -1118,3 +1118,18 @@ kbd {
 .danger-button:hover {
   background: color-mix(in srgb, #b00020 10%, transparent) !important;
 }
+
+
+/* v5.3.1 scroll comfort */
+html {
+  scroll-padding-top: 120px;
+  scroll-padding-bottom: 220px;
+}
+
+.outline-list::after {
+  content: "";
+  display: block;
+  flex: 0 0 auto;
+  height: min(42vh, 360px);
+  pointer-events: none;
+}

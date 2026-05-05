@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-const APP_VERSION = "5.3.0";
+const APP_VERSION = "5.3.1";
 const APP_VERSION_LABEL = `Quietliner v${APP_VERSION}`;
 const STORAGE_KEY = "quietliner.state.v4";
 const MAX_LOGS = 80;
@@ -347,6 +347,30 @@ function HighlightedText({ text, query }) {
 function isImeEvent(event) {
   return Boolean(event.isComposing || event.nativeEvent?.isComposing || event.keyCode === 229);
 }
+
+function keepActiveEditorComfortable(el) {
+  if (!el || typeof window === "undefined") return;
+  window.requestAnimationFrame(() => {
+    const rect = el.getBoundingClientRect();
+    const bottomComfort = 180;
+    const topComfort = 96;
+    const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 0;
+
+    if (!viewportHeight) return;
+
+    if (rect.bottom > viewportHeight - bottomComfort) {
+      const delta = rect.bottom - (viewportHeight - bottomComfort);
+      window.scrollBy({ top: Math.min(delta + 24, 360), behavior: "smooth" });
+      return;
+    }
+
+    if (rect.top < topComfort) {
+      const delta = rect.top - topComfort;
+      window.scrollBy({ top: Math.max(delta - 24, -260), behavior: "smooth" });
+    }
+  });
+}
+
 
 function loadState() {
   try {
@@ -726,6 +750,7 @@ function OutlineRow({
     if (!el) return;
     el.style.height = "auto";
     el.style.height = `${Math.max(28, el.scrollHeight)}px`;
+    if (document.activeElement === el) keepActiveEditorComfortable(el);
   }, [value, activeId]);
 
   return (
@@ -849,6 +874,7 @@ function ZoomTitleEditor({
     if (!el) return;
     el.style.height = "auto";
     el.style.height = `${Math.max(40, el.scrollHeight)}px`;
+    if (document.activeElement === el) keepActiveEditorComfortable(el);
   }, [value, activeId]);
 
   return (
@@ -956,6 +982,7 @@ export default function App() {
       } catch {
         // noop
       }
+      keepActiveEditorComfortable(el);
     };
     requestAnimationFrame(run);
     setTimeout(run, 30);
