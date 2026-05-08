@@ -1,2 +1,2 @@
-Quietliner v5.6.4
-Build: テキストエリアからのクロスブロックドラッグで範囲選択に対応
+Quietliner v5.6.5
+Build: クロスブロック範囲選択をpointermoveベースに変更（誤発火防止、16px閾値）

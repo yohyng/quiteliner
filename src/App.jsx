@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-const APP_VERSION = "5.6.4";
+const APP_VERSION = "5.6.5";
 const APP_VERSION_LABEL = `Quietliner v${APP_VERSION}`;
 const STORAGE_KEY = "quietliner.state.v4";
 const DEVICE_KEY = "quietliner.device.v1";
@@ -790,6 +790,7 @@ function OutlineRow({
   return (
     <div
       className="outline-row"
+      data-node-id={node.id}
       data-active={isActive ? "true" : "false"}
       data-selected={selected ? "true" : "false"}
       data-drag-over={dragOver || ""}
@@ -863,7 +864,7 @@ function OutlineRow({
           onBlur={() => onBlur(node.id)}
           onChange={(event) => onChange(node.id, event.target.value)}
           onKeyDown={(event) => onKeyDown(event, node)}
-          onPointerDown={(event) => { if (event.button === 0) onTextPointerDown(node.id); }}
+          onPointerDown={(event) => { if (event.button === 0) onTextPointerDown(node.id, event.clientY); }}
         />
       </div>
 
@@ -1124,6 +1125,35 @@ export default function App() {
     return () => window.removeEventListener("pointerup", clear);
   }, []);
 
+  const visibleIdsRef = useRef(visibleIds);
+  useEffect(() => { visibleIdsRef.current = visibleIds; }, [visibleIds]);
+
+  useEffect(() => {
+    const handleMove = (event) => {
+      const anchor = textDragAnchorRef.current;
+      if (!anchor) return;
+      if (!(event.buttons & 1)) { textDragAnchorRef.current = null; return; }
+      if (Math.abs(event.clientY - anchor.startY) < 16) return;
+      const el = document.elementFromPoint(event.clientX, event.clientY);
+      const rowEl = el?.closest("[data-node-id]");
+      if (!rowEl) return;
+      const targetId = rowEl.dataset.nodeId;
+      if (!targetId || targetId === anchor.id) return;
+      textDragAnchorRef.current = null;
+      const ids = visibleIdsRef.current;
+      const start = ids.indexOf(anchor.id);
+      const end = ids.indexOf(targetId);
+      if (start < 0 || end < 0) return;
+      if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+      setSelectionAnchorId(anchor.id);
+      setIsSelectingRows(true);
+      setActiveId(null);
+      setSelectedIds(ids.slice(Math.min(start, end), Math.max(start, end) + 1));
+    };
+    window.addEventListener("pointermove", handleMove);
+    return () => window.removeEventListener("pointermove", handleMove);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   useEffect(() => {
     if (!sync.autoSync || !dirty || !sync.gasUrl || !sync.secret) return;
     if (autoSyncTimer.current) clearTimeout(autoSyncTimer.current);
@@ -1210,24 +1240,8 @@ export default function App() {
   }, []);
 
   const enterRowSelection = useCallback((id) => {
-    // グリップからの選択ドラッグ
-    if (isSelectingRows && selectionAnchorId) {
-      const start = visibleIds.indexOf(selectionAnchorId);
-      const end = visibleIds.indexOf(id);
-      if (start < 0 || end < 0) return;
-      const from = Math.min(start, end);
-      const to = Math.max(start, end);
-      setSelectedIds(visibleIds.slice(from, to + 1));
-      return;
-    }
-    // テキストエリアからのクロスブロックドラッグ
-    const anchor = textDragAnchorRef.current;
-    if (!anchor || anchor === id) return;
-    textDragAnchorRef.current = null;
-    setSelectionAnchorId(anchor);
-    setIsSelectingRows(true);
-    setActiveId(null);
-    const start = visibleIds.indexOf(anchor);
+    if (!isSelectingRows || !selectionAnchorId) return;
+    const start = visibleIds.indexOf(selectionAnchorId);
     const end = visibleIds.indexOf(id);
     if (start < 0 || end < 0) return;
     const from = Math.min(start, end);
@@ -2040,7 +2054,7 @@ export default function App() {
                 onZoom={zoomInto}
                 onBeginSelect={beginRowSelection}
                 onEnterSelect={enterRowSelection}
-                onTextPointerDown={(id) => { textDragAnchorRef.current = id; }}
+                onTextPointerDown={(id, startY) => { textDragAnchorRef.current = { id, startY }; }}
                 onDragStartRow={handleDragStartRow}
                 onDragOverRow={handleDragOverRow}
                 onDropRow={handleDropRow}
