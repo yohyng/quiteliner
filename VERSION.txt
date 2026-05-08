@@ -1,2 +1,2 @@
-Quietliner v5.6.5
-Build: クロスブロック範囲選択をpointermoveベースに変更（誤発火防止、16px閾値）
+Quietliner v5.6.6
+Build: 選択ドラッグ中の自動スクロール暴走を修正（user-select:none + 端スクロール制御）

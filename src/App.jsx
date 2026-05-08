@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-const APP_VERSION = "5.6.5";
+const APP_VERSION = "5.6.6";
 const APP_VERSION_LABEL = `Quietliner v${APP_VERSION}`;
 const STORAGE_KEY = "quietliner.state.v4";
 const DEVICE_KEY = "quietliner.device.v1";
@@ -1119,6 +1119,12 @@ export default function App() {
     };
   }, [isSelectingRows]);
 
+  // 選択ドラッグ中はブラウザのテキスト選択自動スクロールを抑制
+  useEffect(() => {
+    document.body.style.userSelect = isSelectingRows ? "none" : "";
+    return () => { document.body.style.userSelect = ""; };
+  }, [isSelectingRows]);
+
   useEffect(() => {
     const clear = () => { textDragAnchorRef.current = null; };
     window.addEventListener("pointerup", clear);
@@ -1128,8 +1134,41 @@ export default function App() {
   const visibleIdsRef = useRef(visibleIds);
   useEffect(() => { visibleIdsRef.current = visibleIds; }, [visibleIds]);
 
+  const isSelectingRowsRef = useRef(isSelectingRows);
+  useEffect(() => { isSelectingRowsRef.current = isSelectingRows; }, [isSelectingRows]);
+
+  const selectionAnchorIdRef = useRef(selectionAnchorId);
+  useEffect(() => { selectionAnchorIdRef.current = selectionAnchorId; }, [selectionAnchorId]);
+
   useEffect(() => {
     const handleMove = (event) => {
+      // 選択ドラッグ中: ビューポート端での制御スクロール
+      if (isSelectingRowsRef.current) {
+        const zone = 72;
+        const vy = window.innerHeight;
+        if (event.clientY > vy - zone) {
+          window.scrollBy({ top: ((event.clientY - (vy - zone)) / zone) * 12, behavior: "instant" });
+        } else if (event.clientY < zone) {
+          window.scrollBy({ top: -((zone - event.clientY) / zone) * 12, behavior: "instant" });
+        }
+        // 選択範囲の延伸
+        const el = document.elementFromPoint(event.clientX, event.clientY);
+        const rowEl = el?.closest("[data-node-id]");
+        if (rowEl) {
+          const targetId = rowEl.dataset.nodeId;
+          const anchorId = selectionAnchorIdRef.current;
+          if (targetId && anchorId) {
+            const ids = visibleIdsRef.current;
+            const start = ids.indexOf(anchorId);
+            const end = ids.indexOf(targetId);
+            if (start >= 0 && end >= 0) {
+              setSelectedIds(ids.slice(Math.min(start, end), Math.max(start, end) + 1));
+            }
+          }
+        }
+        return;
+      }
+      // テキストエリアからのクロスブロックドラッグ検知
       const anchor = textDragAnchorRef.current;
       if (!anchor) return;
       if (!(event.buttons & 1)) { textDragAnchorRef.current = null; return; }
