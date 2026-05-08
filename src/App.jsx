@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-const APP_VERSION = "5.6.1";
+const APP_VERSION = "5.6.2";
 const APP_VERSION_LABEL = `Quietliner v${APP_VERSION}`;
 const STORAGE_KEY = "quietliner.state.v4";
 const DEVICE_KEY = "quietliner.device.v1";
@@ -1873,6 +1873,15 @@ export default function App() {
   return (
     <div className={`app theme-${activeTheme} ${uiHidden ? "ui-hidden" : ""} ${settings.sidebarCollapsed ? "sidebar-collapsed" : ""}`} style={appStyle} data-bg-style={settings.backgroundStyle || "solid"} data-noise-style={settings.backgroundNoise || "mixed"}>
       <div className="top-hot-zone" onMouseEnter={() => setUiHidden(false)} />
+
+      {settings.sidebarCollapsed && (
+        <button
+          className="sidebar-edge-button"
+          type="button"
+          title="サイドバーを開く"
+          onClick={() => setSettings((prev) => ({ ...prev, sidebarCollapsed: false }))}
+        >›</button>
+      )}
 
       <aside className="sidebar">
         <div className="brand-block">

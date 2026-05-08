@@ -289,6 +289,29 @@ button {
   display: none;
 }
 
+.sidebar-edge-button {
+  position: fixed;
+  top: 50%;
+  left: 0;
+  transform: translateY(-50%);
+  z-index: 40;
+  background: color-mix(in srgb, var(--app-bg) 90%, var(--app-text) 4%);
+  border: 1px solid color-mix(in srgb, var(--app-text) 12%, transparent);
+  border-left: none;
+  border-radius: 0 8px 8px 0;
+  padding: 12px 6px;
+  font-size: 16px;
+  color: color-mix(in srgb, var(--app-text) 50%, transparent);
+  cursor: pointer;
+  transition: color 120ms ease, background 120ms ease;
+  line-height: 1;
+}
+
+.sidebar-edge-button:hover {
+  color: var(--app-text);
+  background: color-mix(in srgb, var(--app-bg) 80%, var(--app-text) 8%);
+}
+
 .sidebar-expand-button {
   font-size: 18px;
   padding: 4px 8px;
