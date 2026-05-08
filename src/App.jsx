@@ -1124,6 +1124,37 @@ export default function App() {
     return () => clearTimeout(autoSyncTimer.current);
   }, [dirty, sync.autoSync, sync.gasUrl, sync.secret]);
 
+  // 起動時サイレント Pull: GAS URL / Secret が設定済みなら一度だけ実行
+  const startupPullRef = useRef(false);
+  useEffect(() => {
+    if (startupPullRef.current) return;
+    if (!sync.gasUrl.trim() || !sync.secret.trim()) return;
+    startupPullRef.current = true;
+
+    (async () => {
+      try {
+        setSyncStatus("syncing...");
+        const result = await postToGas("pull");
+        const remotePayload = result?.payload;
+        if (!remotePayload || !Array.isArray(remotePayload.items)) {
+          setSyncStatus("local only");
+          return;
+        }
+        const localPayload = buildExportPayload();
+        const merged = mergePayloads(localPayload, remotePayload);
+        applyRemotePayload(merged, { remoteVersion: merged.version, remoteUpdatedAt: merged.updatedAt });
+        setSyncStatus("synced");
+        appendLog("info", "起動時 Auto Pull: リモートとマージしました", {
+          local: summarizeItems(localPayload.items),
+          remote: summarizeItems(remotePayload.items),
+          merged: merged.summary,
+        });
+      } catch {
+        setSyncStatus("local only");
+      }
+    })();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   const applyTextThen = useCallback((id, text, operation, focusId) => {
     setItems((prev) => {
       const withText = updateNodeText(prev, id, text);
