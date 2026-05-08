@@ -1296,6 +1296,114 @@ kbd {
   background: color-mix(in srgb, #b00020 10%, transparent) !important;
 }
 
+.danger-button:disabled {
+  opacity: 0.38;
+  cursor: not-allowed;
+}
+
+/* v5.6.0 additions */
+.device-id-card {
+  display: grid;
+  gap: 4px;
+  border: 1px solid color-mix(in srgb, var(--app-text) 10%, transparent);
+  border-radius: 18px;
+  padding: 14px;
+  background: color-mix(in srgb, var(--app-bg) 88%, var(--app-text) 3%);
+}
+
+.device-id-card span {
+  font-size: 11px;
+  color: color-mix(in srgb, var(--app-text) 48%, transparent);
+}
+
+.device-id-card code {
+  font-size: 11px;
+  word-break: break-all;
+  color: color-mix(in srgb, var(--app-text) 64%, transparent);
+}
+
+.sync-section {
+  border-top: 1px solid color-mix(in srgb, var(--app-text) 8%, transparent);
+  padding-top: 16px;
+  display: grid;
+  gap: 12px;
+}
+
+.sync-section-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: color-mix(in srgb, var(--app-text) 54%, transparent);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.snapshot-list {
+  display: grid;
+  gap: 6px;
+}
+
+.snapshot-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  border: 1px solid color-mix(in srgb, var(--app-text) 10%, transparent);
+  border-radius: 14px;
+  padding: 8px 12px;
+  background: color-mix(in srgb, var(--app-bg) 90%, var(--app-text) 2%);
+}
+
+.snapshot-label {
+  font-size: 12px;
+  color: color-mix(in srgb, var(--app-text) 70%, transparent);
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.snapshot-item button {
+  flex-shrink: 0;
+  padding: 5px 10px;
+  font-size: 12px;
+}
+
+.danger-zone {
+  border-top-color: color-mix(in srgb, #b00020 30%, transparent) !important;
+}
+
+.danger-zone-toggle {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  color: color-mix(in srgb, #b00020 72%, var(--app-text) 28%);
+  padding: 0;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  text-align: left;
+}
+
+.danger-zone-toggle:hover {
+  color: #b00020;
+}
+
+.danger-zone-content {
+  display: grid;
+  gap: 12px;
+}
+
+.danger-warning {
+  font-size: 12px;
+  color: color-mix(in srgb, #b00020 72%, var(--app-text) 28%);
+  line-height: 1.55;
+  border: 1px solid color-mix(in srgb, #b00020 24%, transparent);
+  border-radius: 12px;
+  padding: 10px 12px;
+  background: color-mix(in srgb, #b00020 5%, transparent);
+}
+
 
 /* v5.3.2 scroll comfort */
 html {

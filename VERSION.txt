@@ -1,2 +1,2 @@
-Quietliner v5.5.4
-Build: text alignment settings, lightweight PWA support, standalone install, no aggressive service worker cache
+Quietliner v5.6.0
+Build: v5.6.0 Safe Multi-device Sync — device ID tracking, isLocalTooSmallComparedToRemote guard, smart sync safety logic, Danger Zone with REPLACE REMOTE text confirmation, Snapshots section (listSnapshots / downloadSnapshot)

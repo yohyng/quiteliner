@@ -1,8 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-const APP_VERSION = "5.5.4";
+const APP_VERSION = "5.6.0";
 const APP_VERSION_LABEL = `Quietliner v${APP_VERSION}`;
 const STORAGE_KEY = "quietliner.state.v4";
+const DEVICE_KEY = "quietliner.device.v1";
 const MAX_LOGS = 80;
 
 const FONT_OPTIONS = {
@@ -62,6 +63,29 @@ const DEFAULT_SYNC = {
 function uid() {
   if (typeof crypto !== "undefined" && crypto.randomUUID) return crypto.randomUUID();
   return `ql_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+}
+
+function getOrCreateDeviceId() {
+  try {
+    let id = localStorage.getItem(DEVICE_KEY);
+    if (!id) {
+      id = uid();
+      localStorage.setItem(DEVICE_KEY, id);
+    }
+    return id;
+  } catch {
+    return uid();
+  }
+}
+
+function isLocalTooSmallComparedToRemote(local, remote) {
+  const remoteChars = Number(remote?.charCount || 0);
+  const localChars = Number(local?.charCount || 0);
+  const remoteNodes = Number(remote?.nodeCount || 0);
+  const localNodes = Number(local?.nodeCount || 0);
+  if (remoteChars > 1000 && localChars < remoteChars * 0.3) return true;
+  if (remoteNodes > 20 && localNodes < remoteNodes * 0.3) return true;
+  return false;
 }
 
 function nowIso() {
@@ -952,6 +976,11 @@ export default function App() {
   const [importText, setImportText] = useState("");
   const [importStatus, setImportStatus] = useState("");
   const [importMode, setImportMode] = useState("append");
+  const [deviceId] = useState(() => getOrCreateDeviceId());
+  const [dangerConfirmText, setDangerConfirmText] = useState("");
+  const [showDangerZone, setShowDangerZone] = useState(false);
+  const [snapshotList, setSnapshotList] = useState([]);
+  const [snapshotListStatus, setSnapshotListStatus] = useState("");
 
   const inputRefs = useRef(new Map());
   const autoSyncTimer = useRef(null);
@@ -1406,6 +1435,7 @@ export default function App() {
       clientVersion: version,
       clientUpdatedAt: updatedAt,
       device: navigator.userAgent,
+      deviceId,
       ...extra,
     };
 
@@ -1557,14 +1587,17 @@ export default function App() {
       const remoteSummary = status.summary || status.remoteSummary || { nodeCount: 0, charCount: 0, isEffectivelyEmpty: !status.exists };
       const remoteLooksEmpty = !status.exists || !Number(status.remoteVersion || 0) || remoteSummary.isEffectivelyEmpty || Number(remoteSummary.nodeCount || 0) === 0;
 
+      // Daily snapshot (fire-and-forget; GAS側が未対応でも無視)
+      postToGas("dailySnapshot", { payload: localPayload }).catch(() => {});
+
       if (localSummary.isEffectivelyEmpty && !remoteLooksEmpty) {
-        appendLog("info", "Smart Sync: local is empty/starter-only, pulling remote data", { localSummary, remoteSummary });
+        appendLog("info", "Smart Sync: local is empty/starter-only → pulling remote data", { localSummary, remoteSummary });
         return await pullRemote();
       }
 
       if (!localSummary.isEffectivelyEmpty && remoteLooksEmpty) {
-        appendLog("info", "Smart Sync: remote is empty, pushing local data", { localSummary, remoteSummary });
-        const result = await pushPayloadToRemote(localPayload, "smart-empty-remote", { snapshotBefore: false });
+        appendLog("info", "Smart Sync: remote is empty → pushing local data", { localSummary, remoteSummary });
+        const result = await pushPayloadToRemote(localPayload, "smart-empty-remote", { snapshotBefore: true });
         setSyncStatus("synced");
         setDirty(false);
         return result;
@@ -1576,6 +1609,32 @@ export default function App() {
         return status;
       }
 
+      // 両側にデータあり → local が remote に比べて極端に少ない場合は Push 禁止
+      if (isLocalTooSmallComparedToRemote(localSummary, remoteSummary)) {
+        appendLog("warn", "Smart Sync: local data is much smaller than remote — pulling to protect data", { localSummary, remoteSummary });
+        const pullResult = await postToGas("pull");
+        const remotePayload = pullResult.payload;
+        // local に非スターターのブロックがあればRemoteにAppend
+        const localNonStarter = (localPayload.items || []).filter((item) => !isStarterOutline([item]) && (countChars(item) > 0 || (item.children || []).length > 0));
+        if (localNonStarter.length > 0) {
+          const mergedItems = appendImportedItems(remotePayload.items || [], localNonStarter);
+          const mergedPayload = {
+            ...remotePayload,
+            items: mergedItems,
+            summary: summarizeItems(mergedItems),
+            mergedAt: nowIso(),
+          };
+          applyRemotePayload(mergedPayload, { remoteVersion: mergedPayload.version, remoteUpdatedAt: mergedPayload.updatedAt });
+          appendLog("info", "Smart Sync: appended local non-starter items to pulled remote data", { appendedCount: localNonStarter.length });
+        } else {
+          applyRemotePayload(remotePayload, pullResult);
+          appendLog("info", "Smart Sync: pulled remote data (no local items to append)", {});
+        }
+        setSyncStatus("synced");
+        return pullResult;
+      }
+
+      // 両側に比較可能なデータあり → Merge してから Push
       const pullResult = await postToGas("pull");
       const remotePayload = pullResult.payload;
       const mergedPayload = mergePayloads(localPayload, remotePayload);
@@ -1587,11 +1646,10 @@ export default function App() {
       });
       setSyncStatus("synced");
       setDirty(false);
-      appendLog("info", "Smart Sync: merged local and remote, then pushed snapshot", {
+      appendLog("info", "Smart Sync: merged local and remote, then pushed", {
         localSummary,
         remoteSummary,
         mergedSummary: mergedPayload.summary,
-        pushResult,
       });
       return pushResult;
     } catch (error) {
@@ -1602,9 +1660,36 @@ export default function App() {
   }
 
   async function forceReplaceRemote() {
-    const ok = window.confirm("Force Replace Remote will overwrite the Notion copy with this device's current outline. A snapshot will be created first when possible. Continue?");
-    if (!ok) return null;
     return pushRemote("force-replace", { force: true, snapshotBefore: true });
+  }
+
+  async function listSnapshots() {
+    setSnapshotListStatus("loading...");
+    try {
+      const result = await postToGas("listSnapshots");
+      const snaps = Array.isArray(result.snapshots) ? result.snapshots : [];
+      setSnapshotList(snaps);
+      setSnapshotListStatus(snaps.length > 0 ? `${snaps.length} snapshot(s) found` : "No snapshots found");
+      appendLog("info", "List Snapshots succeeded", result);
+    } catch (error) {
+      setSnapshotListStatus(`Failed: ${error.message}`);
+      appendLog("error", "List Snapshots failed", error.message);
+    }
+  }
+
+  async function downloadSnapshotById(snapshotId, label) {
+    try {
+      const result = await postToGas("getSnapshot", { snapshotId });
+      if (result.payload) {
+        const filename = `quietliner-snapshot-${(label || snapshotId || "unknown").replace(/[^\w-]/g, "_")}-${Date.now()}.json`;
+        downloadText(filename, JSON.stringify(result.payload, null, 2));
+        appendLog("info", `Snapshot downloaded: ${label || snapshotId}`, {});
+      } else {
+        appendLog("error", "Snapshot download: no payload in response", result);
+      }
+    } catch (error) {
+      appendLog("error", "Download Snapshot failed", error.message);
+    }
   }
 
   const applyImportedJson = useCallback((parsed, sourceName = "JSON") => {
@@ -2027,6 +2112,10 @@ export default function App() {
                   <strong>Current App Version</strong>
                   <span>{APP_VERSION_LABEL}</span>
                 </div>
+                <div className="device-id-card">
+                  <span>Device ID</span>
+                  <code>{deviceId}</code>
+                </div>
                 <label>
                   GAS Web App URL
                   <input value={sync.gasUrl} onChange={(event) => setSync((prev) => ({ ...prev, gasUrl: event.target.value }))} placeholder="https://script.google.com/macros/s/.../exec" />
@@ -2039,7 +2128,7 @@ export default function App() {
                   <input type="checkbox" checked={sync.autoSync} onChange={(event) => setSync((prev) => ({ ...prev, autoSync: event.target.checked }))} />
                   Auto Sync ON/OFF
                 </label>
-                <p className="sync-hint">Smart Syncは空データPushを防ぎ、両方にデータがある場合はMergeを試みます。Force Replace Remoteだけは現在の端末内容でNotion側を上書きする危険操作です。</p>
+                <p className="sync-hint">Smart Syncはローカルデータが少ない場合のPushを自動ブロックし、必要に応じてRemoteからPullまたはMergeします。</p>
 
                 <div className="sync-state-card">
                   <span>Status</span>
@@ -2054,8 +2143,60 @@ export default function App() {
                   <button type="button" onClick={() => pushRemote().catch(() => {})}>Push Backup</button>
                   <button type="button" onClick={() => pullRemote().catch(() => {})}>Pull</button>
                   <button type="button" onClick={() => smartSync().catch(() => {})}>Smart Sync</button>
-                  <button className="danger-button" type="button" onClick={() => forceReplaceRemote().catch(() => {})}>Force Replace Remote</button>
                   <button type="button" onClick={() => setSyncLog([])}>Clear Log</button>
+                </div>
+
+                <div className="sync-section">
+                  <div className="sync-section-title">Snapshots</div>
+                  <p className="sync-hint">GAS側でlistSnapshots / getSnapshotアクションが必要です。未対応のGASでもエラーになるだけです。</p>
+                  <div className="sync-buttons">
+                    <button type="button" onClick={listSnapshots}>List Snapshots</button>
+                  </div>
+                  {snapshotListStatus && <p className="sync-hint">{snapshotListStatus}</p>}
+                  {snapshotList.length > 0 && (
+                    <div className="snapshot-list">
+                      {snapshotList.map((snap) => (
+                        <div key={snap.id || snap.title} className="snapshot-item">
+                          <span className="snapshot-label">{snap.title || snap.id || "Snapshot"}</span>
+                          <button type="button" onClick={() => downloadSnapshotById(snap.id, snap.title)}>Download</button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <div className="sync-section danger-zone">
+                  <button
+                    type="button"
+                    className="danger-zone-toggle"
+                    onClick={() => { setShowDangerZone((prev) => !prev); setDangerConfirmText(""); }}
+                  >
+                    {showDangerZone ? "▾" : "▸"} Danger Zone
+                  </button>
+                  {showDangerZone && (
+                    <div className="danger-zone-content">
+                      <p className="danger-warning">Force Replace Remoteは現在の端末のデータでNotion側を完全に上書きします。実行前にSnapshotを作成しますが、Notionの既存データは失われます。</p>
+                      <label>
+                        確認のため <strong>REPLACE REMOTE</strong> と入力してください
+                        <input
+                          value={dangerConfirmText}
+                          onChange={(event) => setDangerConfirmText(event.target.value)}
+                          placeholder="REPLACE REMOTE"
+                          autoComplete="off"
+                        />
+                      </label>
+                      <div className="sync-buttons">
+                        <button
+                          className="danger-button"
+                          type="button"
+                          disabled={dangerConfirmText !== "REPLACE REMOTE"}
+                          onClick={() => { forceReplaceRemote().catch(() => {}); setDangerConfirmText(""); setShowDangerZone(false); }}
+                        >
+                          Force Replace Remote
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 <div className="debug-log">
