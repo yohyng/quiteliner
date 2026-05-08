@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-const APP_VERSION = "5.6.3";
+const APP_VERSION = "5.6.4";
 const APP_VERSION_LABEL = `Quietliner v${APP_VERSION}`;
 const STORAGE_KEY = "quietliner.state.v4";
 const DEVICE_KEY = "quietliner.device.v1";
@@ -764,6 +764,7 @@ function OutlineRow({
   onZoom,
   onBeginSelect,
   onEnterSelect,
+  onTextPointerDown,
   onDragStartRow,
   onDragOverRow,
   onDropRow,
@@ -862,6 +863,7 @@ function OutlineRow({
           onBlur={() => onBlur(node.id)}
           onChange={(event) => onChange(node.id, event.target.value)}
           onKeyDown={(event) => onKeyDown(event, node)}
+          onPointerDown={(event) => { if (event.button === 0) onTextPointerDown(node.id); }}
         />
       </div>
 
@@ -985,6 +987,7 @@ export default function App() {
   const inputRefs = useRef(new Map());
   const autoSyncTimer = useRef(null);
   const sidebarResizeRef = useRef(null);
+  const textDragAnchorRef = useRef(null);
 
   const zoomRootNode = useMemo(() => getNodeById(items, zoomRootId), [items, zoomRootId]);
   const zoomTrail = useMemo(() => (zoomRootId ? findTrail(items, zoomRootId) : []), [items, zoomRootId]);
@@ -1116,6 +1119,12 @@ export default function App() {
   }, [isSelectingRows]);
 
   useEffect(() => {
+    const clear = () => { textDragAnchorRef.current = null; };
+    window.addEventListener("pointerup", clear);
+    return () => window.removeEventListener("pointerup", clear);
+  }, []);
+
+  useEffect(() => {
     if (!sync.autoSync || !dirty || !sync.gasUrl || !sync.secret) return;
     if (autoSyncTimer.current) clearTimeout(autoSyncTimer.current);
     autoSyncTimer.current = setTimeout(() => {
@@ -1201,8 +1210,24 @@ export default function App() {
   }, []);
 
   const enterRowSelection = useCallback((id) => {
-    if (!isSelectingRows || !selectionAnchorId) return;
-    const start = visibleIds.indexOf(selectionAnchorId);
+    // グリップからの選択ドラッグ
+    if (isSelectingRows && selectionAnchorId) {
+      const start = visibleIds.indexOf(selectionAnchorId);
+      const end = visibleIds.indexOf(id);
+      if (start < 0 || end < 0) return;
+      const from = Math.min(start, end);
+      const to = Math.max(start, end);
+      setSelectedIds(visibleIds.slice(from, to + 1));
+      return;
+    }
+    // テキストエリアからのクロスブロックドラッグ
+    const anchor = textDragAnchorRef.current;
+    if (!anchor || anchor === id) return;
+    textDragAnchorRef.current = null;
+    setSelectionAnchorId(anchor);
+    setIsSelectingRows(true);
+    setActiveId(null);
+    const start = visibleIds.indexOf(anchor);
     const end = visibleIds.indexOf(id);
     if (start < 0 || end < 0) return;
     const from = Math.min(start, end);
@@ -2015,6 +2040,7 @@ export default function App() {
                 onZoom={zoomInto}
                 onBeginSelect={beginRowSelection}
                 onEnterSelect={enterRowSelection}
+                onTextPointerDown={(id) => { textDragAnchorRef.current = id; }}
                 onDragStartRow={handleDragStartRow}
                 onDragOverRow={handleDragOverRow}
                 onDropRow={handleDropRow}
