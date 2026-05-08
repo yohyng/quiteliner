@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-const APP_VERSION = "5.6.7";
+const APP_VERSION = "5.6.8";
 const APP_VERSION_LABEL = `Quietliner v${APP_VERSION}`;
 const STORAGE_KEY = "quietliner.state.v4";
 const DEVICE_KEY = "quietliner.device.v1";
@@ -933,7 +933,7 @@ function OutlineRow({
           onBlur={() => onBlur(node.id)}
           onChange={(event) => onChange(node.id, event.target.value)}
           onKeyDown={(event) => onKeyDown(event, node)}
-          onPointerDown={(event) => { if (event.button === 0) onTextPointerDown(node.id, event.clientY); }}
+          onPointerDown={(event) => { if (event.button === 0) onTextPointerDown(node.id, event.clientX, event.clientY); }}
         />
       </div>
 
@@ -1241,7 +1241,10 @@ export default function App() {
       const anchor = textDragAnchorRef.current;
       if (!anchor) return;
       if (!(event.buttons & 1)) { textDragAnchorRef.current = null; return; }
-      if (Math.abs(event.clientY - anchor.startY) < 16) return;
+      const dy = Math.abs(event.clientY - anchor.startY);
+      const dx = Math.abs(event.clientX - anchor.startX);
+      if (dy < 16) return;
+      if (dx > dy * 1.5) return;
       const el = document.elementFromPoint(event.clientX, event.clientY);
       const rowEl = el?.closest("[data-node-id]");
       if (!rowEl) return;
@@ -2175,7 +2178,7 @@ export default function App() {
                 onZoom={zoomInto}
                 onBeginSelect={beginRowSelection}
                 onEnterSelect={enterRowSelection}
-                onTextPointerDown={(id, startY) => { textDragAnchorRef.current = { id, startY }; }}
+                onTextPointerDown={(id, startX, startY) => { textDragAnchorRef.current = { id, startX, startY }; }}
                 onDragStartRow={handleDragStartRow}
                 onDragOverRow={handleDragOverRow}
                 onDropRow={handleDropRow}
