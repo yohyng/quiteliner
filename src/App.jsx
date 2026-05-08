@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-const APP_VERSION = "5.6.2";
+const APP_VERSION = "5.6.3";
 const APP_VERSION_LABEL = `Quietliner v${APP_VERSION}`;
 const STORAGE_KEY = "quietliner.state.v4";
 const DEVICE_KEY = "quietliner.device.v1";
@@ -1123,6 +1123,10 @@ export default function App() {
     }, 45000);
     return () => clearTimeout(autoSyncTimer.current);
   }, [dirty, sync.autoSync, sync.gasUrl, sync.secret]);
+
+  useEffect(() => {
+    document.title = APP_VERSION_LABEL;
+  }, []);
 
   // 起動時サイレント Pull: GAS URL / Secret が設定済みなら一度だけ実行
   const startupPullRef = useRef(false);
