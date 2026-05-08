@@ -262,6 +262,39 @@ button {
   transition: opacity 240ms ease, transform 240ms ease, filter 240ms ease;
 }
 
+.sidebar-collapse-button {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 18px;
+  line-height: 1;
+  padding: 2px 4px;
+  color: color-mix(in srgb, var(--app-text) 36%, transparent);
+  margin-left: auto;
+  flex-shrink: 0;
+  transition: color 120ms ease;
+}
+
+.sidebar-collapse-button:hover {
+  color: var(--app-text);
+}
+
+.sidebar-collapsed .sidebar {
+  opacity: 0;
+  pointer-events: none;
+  transform: translateX(-12px);
+}
+
+.sidebar-collapsed .sidebar-resizer {
+  display: none;
+}
+
+.sidebar-expand-button {
+  font-size: 18px;
+  padding: 4px 8px;
+  flex-shrink: 0;
+}
+
 .ui-hidden .sidebar,
 .ui-hidden .topbar {
   opacity: 0;

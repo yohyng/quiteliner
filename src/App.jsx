@@ -1864,12 +1864,14 @@ export default function App() {
     "--editor-letter-spacing": `${Number(settings.letterSpacing ?? 0.01)}em`,
     "--editor-text-align": textAlignment.align,
     "--editor-text-align-last": textAlignment.last,
-    "--sidebar-width": `${Math.max(196, Math.min(420, Number(settings.sidebarWidth || 252)))}px`,
+    "--sidebar-width": settings.sidebarCollapsed
+      ? "0px"
+      : `${Math.max(196, Math.min(420, Number(settings.sidebarWidth || 252)))}px`,
     "--editor-max-width": `${Math.max(560, Math.min(1440, Number(settings.editorWidth || 920)))}px`,
   };
 
   return (
-    <div className={`app theme-${activeTheme} ${uiHidden ? "ui-hidden" : ""}`} style={appStyle} data-bg-style={settings.backgroundStyle || "solid"} data-noise-style={settings.backgroundNoise || "mixed"}>
+    <div className={`app theme-${activeTheme} ${uiHidden ? "ui-hidden" : ""} ${settings.sidebarCollapsed ? "sidebar-collapsed" : ""}`} style={appStyle} data-bg-style={settings.backgroundStyle || "solid"} data-noise-style={settings.backgroundNoise || "mixed"}>
       <div className="top-hot-zone" onMouseEnter={() => setUiHidden(false)} />
 
       <aside className="sidebar">
@@ -1879,6 +1881,13 @@ export default function App() {
           </button>
           <div className="app-version-pill" title="Current app version">v{APP_VERSION}</div>
           <div className="sync-pill" data-status={syncStatus}>{syncStatus}</div>
+          <button
+            className="sidebar-collapse-button"
+            type="button"
+            title="サイドバーを閉じる"
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => setSettings((prev) => ({ ...prev, sidebarCollapsed: true }))}
+          >‹</button>
         </div>
 
         <button className="all-notes" type="button" onClick={() => zoomOutAll(visibleRows[0]?.node.id)}>
@@ -1900,6 +1909,14 @@ export default function App() {
 
       <main className="main-panel">
         <header className="topbar">
+          {settings.sidebarCollapsed && (
+            <button
+              className="ghost-button sidebar-expand-button"
+              type="button"
+              title="サイドバーを開く"
+              onClick={() => setSettings((prev) => ({ ...prev, sidebarCollapsed: false }))}
+            >›</button>
+          )}
           <input
             className="search-input"
             value={query}
