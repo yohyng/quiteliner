@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-const APP_VERSION = "5.6.8";
+const APP_VERSION = "5.6.9";
 const APP_VERSION_LABEL = `Quietliner v${APP_VERSION}`;
 const STORAGE_KEY = "quietliner.state.v4";
 const DEVICE_KEY = "quietliner.device.v1";
@@ -1058,6 +1058,10 @@ export default function App() {
   const autoSyncTimer = useRef(null);
   const sidebarResizeRef = useRef(null);
   const textDragAnchorRef = useRef(null);
+  const historyRef = useRef([]);
+  const historyIndexRef = useRef(-1);
+  const isUndoingRef = useRef(false);
+  const itemsRef = useRef(items);
 
   const zoomRootNode = useMemo(() => getNodeById(items, zoomRootId), [items, zoomRootId]);
   const zoomTrail = useMemo(() => (zoomRootId ? findTrail(items, zoomRootId) : []), [items, zoomRootId]);
@@ -1119,14 +1123,45 @@ export default function App() {
     setDirty(true);
   }, []);
 
+  const pushHistory = useCallback(() => {
+    if (isUndoingRef.current) return;
+    const snapshot = JSON.parse(JSON.stringify(itemsRef.current || []));
+    const idx = historyIndexRef.current;
+    const sliced = historyRef.current.slice(0, idx + 1);
+    if (sliced.length && JSON.stringify(sliced[sliced.length - 1]) === JSON.stringify(snapshot)) return;
+    sliced.push(snapshot);
+    if (sliced.length > 50) sliced.shift();
+    historyRef.current = sliced;
+    historyIndexRef.current = historyRef.current.length - 1;
+  }, []);
+
+  const undo = useCallback(() => {
+    if (historyIndexRef.current <= 0) return;
+    historyIndexRef.current--;
+    isUndoingRef.current = true;
+    setItems(JSON.parse(JSON.stringify(historyRef.current[historyIndexRef.current])));
+    markChanged();
+    setTimeout(() => { isUndoingRef.current = false; }, 0);
+  }, [markChanged]);
+
+  const redo = useCallback(() => {
+    if (historyIndexRef.current >= historyRef.current.length - 1) return;
+    historyIndexRef.current++;
+    isUndoingRef.current = true;
+    setItems(JSON.parse(JSON.stringify(historyRef.current[historyIndexRef.current])));
+    markChanged();
+    setTimeout(() => { isUndoingRef.current = false; }, 0);
+  }, [markChanged]);
+
   const mutateItems = useCallback((updater, focusId = null) => {
+    pushHistory();
     setItems((prev) => {
       const next = updater(prev);
       return Array.isArray(next) && next.length ? next : [makeNode("")];
     });
     markChanged();
     if (focusId) focusNode(focusId);
-  }, [focusNode, markChanged]);
+  }, [focusNode, markChanged, pushHistory]);
 
   const commitDraft = useCallback((id) => {
     setDrafts((prevDrafts) => {
@@ -1188,11 +1223,28 @@ export default function App() {
     };
   }, [isSelectingRows]);
 
+  useEffect(() => { itemsRef.current = items; }, [items]);
+
   // 選択ドラッグ中はブラウザのテキスト選択自動スクロールを抑制
   useEffect(() => {
     document.body.style.userSelect = isSelectingRows ? "none" : "";
     return () => { document.body.style.userSelect = ""; };
   }, [isSelectingRows]);
+
+  useEffect(() => {
+    const onKey = (event) => {
+      if (!(event.ctrlKey || event.metaKey)) return;
+      if (event.key.toLowerCase() === "z") {
+        event.preventDefault();
+        if (event.shiftKey) redo(); else undo();
+      } else if (event.key.toLowerCase() === "y") {
+        event.preventDefault();
+        redo();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [undo, redo]);
 
   useEffect(() => {
     const clear = () => { textDragAnchorRef.current = null; };
@@ -1310,6 +1362,7 @@ export default function App() {
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const applyTextThen = useCallback((id, text, operation, focusId) => {
+    pushHistory();
     setItems((prev) => {
       const withText = updateNodeText(prev, id, text);
       return operation(withText);
@@ -1321,7 +1374,7 @@ export default function App() {
     });
     markChanged();
     if (focusId) focusNode(focusId);
-  }, [focusNode, markChanged]);
+  }, [focusNode, markChanged, pushHistory]);
 
   const handleFocus = useCallback((id, text) => {
     setActiveId(id);
@@ -1532,6 +1585,46 @@ export default function App() {
     setUiHidden(false);
     if (focusId) focusNode(focusId);
   }, [focusNode]);
+
+  const deleteSelected = useCallback(() => {
+    if (!selectedIds.length) return;
+    pushHistory();
+    setItems((prev) => {
+      let result = prev;
+      for (const id of selectedIds) {
+        result = deleteNodeSafe(result, id).items;
+      }
+      return result.length ? result : [makeNode("")];
+    });
+    setSelectedIds([]);
+    markChanged();
+  }, [selectedIds, pushHistory, markChanged]);
+
+  const indentSelected = useCallback(() => {
+    if (!selectedIds.length) return;
+    pushHistory();
+    setItems((prev) => {
+      let result = prev;
+      for (const id of selectedIds) {
+        result = indentNode(result, id);
+      }
+      return result;
+    });
+    markChanged();
+  }, [selectedIds, pushHistory, markChanged]);
+
+  const dedentSelected = useCallback(() => {
+    if (!selectedIds.length) return;
+    pushHistory();
+    setItems((prev) => {
+      let result = prev;
+      for (const id of [...selectedIds].reverse()) {
+        result = outdentNode(result, id);
+      }
+      return result;
+    });
+    markChanged();
+  }, [selectedIds, pushHistory, markChanged]);
 
   const addRootNode = useCallback(() => {
     const node = makeNode("");
@@ -2189,6 +2282,16 @@ export default function App() {
           </div>
         </section>
       </main>
+
+      {selectedIds.length > 0 && (
+        <div className="action-menu">
+          <span className="action-menu-count">{selectedIds.length}件選択</span>
+          <button className="action-menu-btn" type="button" onClick={dedentSelected} title="アウトデント (Shift+Tab)">←</button>
+          <button className="action-menu-btn" type="button" onClick={indentSelected} title="インデント (Tab)">→</button>
+          <button className="action-menu-btn danger" type="button" onClick={deleteSelected} title="削除">削除</button>
+          <button className="action-menu-btn" type="button" onClick={() => setSelectedIds([])} title="選択解除">✕</button>
+        </div>
+      )}
 
       {settingsOpen && (
         <div className="settings-backdrop" onMouseDown={() => setSettingsOpen(false)}>

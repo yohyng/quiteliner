@@ -1,2 +1,2 @@
-Quietliner v5.6.8
-Build: ブロック内横ドラッグで誤ってクロスブロック選択が起動するバグを修正
+Quietliner v5.6.9
+Build: Undo/Redo (Ctrl+Z/Ctrl+Shift+Z) + 複数ブロック選択時のアクションメニュー追加
