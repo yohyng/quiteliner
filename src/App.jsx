@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-const APP_VERSION = "5.6.6";
+const APP_VERSION = "5.6.7";
 const APP_VERSION_LABEL = `Quietliner v${APP_VERSION}`;
 const STORAGE_KEY = "quietliner.state.v4";
 const DEVICE_KEY = "quietliner.device.v1";
@@ -745,6 +745,75 @@ function parseDiaryTextPayload(rawText) {
     updatedAt: nowIso(),
     nodes: [makeImportedNode("Diary", dateNodes, { id: "diary-root-import", favorite: true })],
   };
+}
+
+function detectIndentUnit(lines) {
+  for (const line of lines) {
+    const m = line.match(/^(\s+)[-*] /);
+    if (m) {
+      const spaces = m[1].replace(/\t/g, "    ").length;
+      if (spaces > 0) return spaces;
+    }
+  }
+  return 4;
+}
+
+function getIndentLevel(indentStr, unit) {
+  const spaces = indentStr.replace(/\t/g, "    ").length;
+  return Math.round(spaces / unit);
+}
+
+function parseNotionToggleText(rawText) {
+  const source = String(rawText || "").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+  const lines = source.split("\n");
+  const unit = detectIndentUnit(lines);
+  const roots = [];
+  const stack = []; // [{ node, level }]
+
+  const pushNode = (node, level) => {
+    while (stack.length > 0 && stack[stack.length - 1].level >= level) stack.pop();
+    if (stack.length === 0) {
+      roots.push(node);
+    } else {
+      const parent = stack[stack.length - 1].node;
+      parent.children = parent.children || [];
+      parent.children.push(node);
+    }
+    stack.push({ node, level });
+  };
+
+  for (const line of lines) {
+    // Notion ページリンク [タイトル](URL)
+    const linkMatch = line.match(/^(\s*)\[(.+?)\]\(https?:\/\/.+?\)\s*$/);
+    if (linkMatch) {
+      const level = getIndentLevel(linkMatch[1], unit);
+      pushNode(makeImportedNode(linkMatch[2].trim()), level);
+      continue;
+    }
+    // bullet 行
+    const bulletMatch = line.match(/^(\s*)[-*] (.*)$/);
+    if (bulletMatch) {
+      const level = getIndentLevel(bulletMatch[1], unit);
+      const content = bulletMatch[2].trim();
+      if (!content) continue; // 空bullet はスキップ
+      pushNode(makeImportedNode(content), level);
+      continue;
+    }
+    // 非bullet コンテンツ行: スタック最上位ノードにテキストとして追記
+    const content = line.trim();
+    if (content && stack.length > 0) {
+      const top = stack[stack.length - 1].node;
+      top.text = top.text ? `${top.text}\n${content}` : content;
+    }
+  }
+
+  if (!roots.length) throw new Error("Notion toggle format: no bullet lines found");
+  return roots;
+}
+
+function looksLikeNotionToggle(text) {
+  const lines = text.split("\n");
+  return lines.filter((l) => /^\s*[-*] \S/.test(l)).length >= 2;
 }
 
 function OutlineRow({
@@ -1874,10 +1943,23 @@ export default function App() {
         applyImportedJson(diaryPayload, `${sourceName} diary text`);
         return true;
       } catch (diaryError) {
+        if (looksLikeNotionToggle(raw)) {
+          try {
+            const nodes = parseNotionToggleText(raw);
+            const notionPayload = { schema: "quietliner.notionToggle.v1", version: Date.now(), updatedAt: nowIso(), nodes };
+            applyImportedJson(notionPayload, `${sourceName} Notion toggle`);
+            return true;
+          } catch (notionError) {
+            const message = `Import failed: Notion toggle parse error: ${notionError.message}`;
+            setImportStatus(message);
+            appendLog("error", "Import failed", message);
+            return false;
+          }
+        }
         const looksLikeJson = raw.startsWith("{") || raw.startsWith("[");
         const help = looksLikeJson
           ? "JSONが途中で切れている可能性があります。全文を最初の { から最後の } までコピーするか、元の日記テキストをそのまま貼ってください。"
-          : "日付行が見つかりませんでした。2026/01/02 のような日付行で区切った日記テキスト、またはQuietliner JSONを貼ってください。";
+          : "日付行が見つかりませんでした。2026/01/02 のような日付行で区切った日記テキスト、Notionのトグルテキスト、またはQuietliner JSONを貼ってください。";
         const message = `Import failed: ${jsonError.message}. ${help}`;
         setImportStatus(message);
         appendLog("error", "Import failed", {
@@ -2234,7 +2316,7 @@ export default function App() {
                     <textarea
                       value={importText}
                       onChange={(event) => setImportText(event.target.value)}
-                      placeholder='Quietliner JSON、または 2026/01/02 のような日付行で区切った日記テキストをそのまま貼れます。'
+                      placeholder='Quietliner JSON、2026/01/02 のような日付行で区切った日記テキスト、またはNotionのトグルをプレーンテキストでコピーしたものをそのまま貼れます。'
                     />
                   </label>
                   <div className="settings-actions">
