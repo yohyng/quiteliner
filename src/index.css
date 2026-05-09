@@ -1464,18 +1464,18 @@ kbd {
 /* v5.3.2 scroll comfort */
 html {
   scroll-padding-top: 130px;
-  scroll-padding-bottom: max(360px, 56vh);
+  scroll-padding-bottom: max(60px, 12vh);
 }
 
 .editor-wrap {
-  padding-bottom: max(380px, 58vh);
+  padding-bottom: max(72px, 14vh);
 }
 
 .outline-list::after {
   content: "";
   display: block;
   flex: 0 0 auto;
-  height: max(360px, 58vh);
+  height: max(56px, 10vh);
   pointer-events: none;
 }
 
