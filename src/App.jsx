@@ -2131,7 +2131,7 @@ export default function App() {
   };
 
   return (
-    <div className={`app theme-${activeTheme} ${uiHidden ? "ui-hidden" : ""} ${settings.sidebarCollapsed ? "sidebar-collapsed" : ""}`} style={appStyle} data-bg-style={settings.backgroundStyle || "solid"} data-noise-style={settings.backgroundNoise || "mixed"}>
+    <div className={`app theme-${activeTheme} ${uiHidden ? "ui-hidden" : ""} ${settings.sidebarCollapsed ? "sidebar-collapsed" : ""} ${isSelectingRows ? "is-selecting" : ""}`} style={appStyle} data-bg-style={settings.backgroundStyle || "solid"} data-noise-style={settings.backgroundNoise || "mixed"}>
       <div className="top-hot-zone" onMouseEnter={() => setUiHidden(false)} />
 
       {settings.sidebarCollapsed && (
