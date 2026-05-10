@@ -746,11 +746,20 @@ button {
 }
 
 .outline-row[data-selected="true"] {
-  background: transparent;
+  background: color-mix(in srgb, var(--app-text) 7%, transparent);
+  border-radius: 12px;
 }
 
 .outline-row[data-selected="true"] .text-shell {
   box-shadow: none;
+}
+
+.is-selecting {
+  cursor: ns-resize;
+}
+
+.is-selecting .outline-row[data-selected="true"] {
+  background: color-mix(in srgb, var(--app-text) 10%, transparent);
 }
 
 .select-grip {
