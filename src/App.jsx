@@ -6,6 +6,8 @@ const STORAGE_KEY = "quietliner.state.v4";
 const DEVICE_KEY = "quietliner.device.v1";
 const MAX_LOGS = 80;
 
+const appStateRef = { typewriterMode: false };
+
 const FONT_OPTIONS = {
   mincho: '"Yu Mincho", "Hiragino Mincho ProN", "Noto Serif JP", serif',
   serif: 'Georgia, "Times New Roman", "Yu Mincho", serif',
@@ -52,11 +54,13 @@ const DEFAULT_SETTINGS = {
   bgDark: "#111111",
   textDark: "#eeeeee",
   rootTitle: "All Notes",
+  typewriterMode: false,
 };
 
 const DEFAULT_SYNC = {
-  gasUrl: "",
-  secret: "",
+  supabaseUrl: "",
+  supabaseKey: "",
+  docId: "main",
   autoSync: false,
 };
 
@@ -385,11 +389,20 @@ function keepActiveEditorComfortable(el) {
   if (!el || typeof window === "undefined") return;
   window.requestAnimationFrame(() => {
     const rect = el.getBoundingClientRect();
+    const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 0;
+    if (!viewportHeight) return;
+
+    if (appStateRef.typewriterMode) {
+      const targetTop = viewportHeight * 0.38;
+      const delta = rect.top - targetTop;
+      if (Math.abs(delta) > 10) {
+        window.scrollBy({ top: delta, behavior: "smooth" });
+      }
+      return;
+    }
+
     const bottomComfort = Math.min(420, Math.max(260, viewportHeight * 0.38));
     const topComfort = 110;
-    const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 0;
-
-    if (!viewportHeight) return;
 
     if (rect.bottom > viewportHeight - bottomComfort) {
       const delta = rect.bottom - (viewportHeight - bottomComfort);
@@ -1075,6 +1088,11 @@ export default function App() {
   const favorites = useMemo(() => collectFavorites(items), [items]);
   const zoomTitle = zoomRootNode ? getReadableTitle(zoomRootNode) : rootTitle;
   const activeTheme = settings.theme === "dark" ? "dark" : "light";
+
+  useEffect(() => {
+    appStateRef.typewriterMode = Boolean(settings.typewriterMode);
+  }, [settings.typewriterMode]);
+
   const appBackground = activeTheme === "dark" ? settings.bgDark : settings.bgLight;
   const appTextColor = activeTheme === "dark" ? settings.textDark : settings.textLight;
   const fontFamily = FONT_OPTIONS[settings.font] || FONT_OPTIONS.gothic;
@@ -1318,13 +1336,13 @@ export default function App() {
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    if (!sync.autoSync || !dirty || !sync.gasUrl || !sync.secret) return;
+    if (!sync.autoSync || !dirty || !sync.supabaseUrl || !sync.supabaseKey) return;
     if (autoSyncTimer.current) clearTimeout(autoSyncTimer.current);
     autoSyncTimer.current = setTimeout(() => {
       pushRemote("auto").catch((error) => appendLog("error", "Auto Sync failed", error.message));
     }, 45000);
     return () => clearTimeout(autoSyncTimer.current);
-  }, [dirty, sync.autoSync, sync.gasUrl, sync.secret]);
+  }, [dirty, sync.autoSync, sync.supabaseUrl, sync.supabaseKey]);
 
   useEffect(() => {
     document.title = APP_VERSION_LABEL;
@@ -1334,27 +1352,12 @@ export default function App() {
   const startupPullRef = useRef(false);
   useEffect(() => {
     if (startupPullRef.current) return;
-    if (!sync.gasUrl.trim() || !sync.secret.trim()) return;
+    if (!sync.supabaseUrl.trim() || !sync.supabaseKey.trim()) return;
     startupPullRef.current = true;
 
     (async () => {
       try {
-        setSyncStatus("syncing...");
-        const result = await postToGas("pull");
-        const remotePayload = result?.payload;
-        if (!remotePayload || !Array.isArray(remotePayload.items)) {
-          setSyncStatus("local only");
-          return;
-        }
-        const localPayload = buildExportPayload();
-        const merged = mergePayloads(localPayload, remotePayload);
-        applyRemotePayload(merged, { remoteVersion: merged.version, remoteUpdatedAt: merged.updatedAt });
-        setSyncStatus("synced");
-        appendLog("info", "起動時 Auto Pull: リモートとマージしました", {
-          local: summarizeItems(localPayload.items),
-          remote: summarizeItems(remotePayload.items),
-          merged: merged.summary,
-        });
+        await smartSync();
       } catch {
         setSyncStatus("local only");
       }
@@ -1676,137 +1679,72 @@ export default function App() {
     };
   }, [getCurrentItems, settings, updatedAt, version]);
 
-  function explainGasFailure(action, response, text, json) {
-    if (json?.error) {
-      const errorText = String(json.error);
-      if (/unknown action/i.test(errorText)) {
-        return `GAS Code.gs is older than this app. Paste gas/Code.gs from v4.2 into Apps Script and deploy a new Web App version. Original error: ${errorText}`;
-      }
-      if (/shared secret/i.test(errorText)) {
-        return `${errorText}. Check that Settings → Shared Secret matches GAS Script Properties → QUIETLINER_SECRET.`;
-      }
-      if (/notion_token|notion_database_id|notion api/i.test(errorText)) {
-        return `${errorText}. Check GAS Script Properties and whether the Notion database is shared with the integration.`;
-      }
-      return errorText;
-    }
-    if (!response.ok) return `HTTP ${response.status}`;
-    const trimmed = String(text || "").trim();
-    if (trimmed.startsWith("<")) {
-      return "GAS returned HTML. Check that the Web App URL ends with /exec and the deployment is accessible.";
-    }
-    if (!trimmed) return "Empty response from GAS";
-    return `${action} returned an unreadable response`;
-  }
-
-  async function postToGas(action, extra = {}) {
-    const gasUrl = sync.gasUrl.trim();
-    if (!gasUrl) throw new Error("GAS Web App URL is empty");
-    if (action !== "ping" && !sync.secret.trim()) {
-      throw new Error("Shared Secret is empty. Put the same value as QUIETLINER_SECRET in GAS Script Properties.");
-    }
-
-    const body = {
-      action,
-      secret: sync.secret,
-      client: "quietliner-web",
-      clientVersion: version,
-      clientUpdatedAt: updatedAt,
-      device: navigator.userAgent,
-      deviceId,
+  function supabaseHeaders(extra = {}) {
+    return {
+      apikey: sync.supabaseKey.trim(),
+      Authorization: `Bearer ${sync.supabaseKey.trim()}`,
+      "Content-Type": "application/json",
       ...extra,
     };
+  }
 
-    appendLog("info", `${action} request`, {
-      endpoint: gasUrl.replace(/\?.*$/, ""),
-      hasSecret: Boolean(sync.secret.trim()),
-      localVersion: version,
-      localUpdatedAt: updatedAt,
-    });
-
-    let response;
-    let text = "";
+  async function supabaseRequest(method, path, body) {
+    const base = sync.supabaseUrl.trim().replace(/\/$/, "");
+    if (!base) throw new Error("Supabase URL が未設定です。Settings → Sync で入力してください。");
+    if (!sync.supabaseKey.trim()) throw new Error("Supabase Anon Key が未設定です。Settings → Sync で入力してください。");
+    const url = `${base}/rest/v1${path}`;
+    const opts = {
+      method,
+      headers: supabaseHeaders(method === "POST" || method === "PATCH" ? { Prefer: "resolution=merge-duplicates,return=representation" } : {}),
+    };
+    if (body !== undefined) opts.body = JSON.stringify(body);
+    let response, text;
     try {
-      response = await fetch(gasUrl, {
-        method: "POST",
-        mode: "cors",
-        headers: { "Content-Type": "text/plain;charset=utf-8" },
-        body: JSON.stringify(body),
-      });
+      response = await fetch(url, opts);
       text = await response.text();
-    } catch (error) {
-      const message = "Network/CORS request failed. Check GAS deployment access: Execute as Me, access Anyone, and use the /exec URL.";
-      appendLog("error", `${action} failed`, `${message}\n\n${error?.message || error}`);
-      throw new Error(message);
+    } catch (err) {
+      throw new Error(`ネットワークエラー: ${err?.message || err}`);
     }
-
-    let json = null;
-    try {
-      json = JSON.parse(text);
-    } catch {
-      json = { ok: false, raw: text };
+    let json;
+    try { json = JSON.parse(text); } catch { json = text; }
+    if (!response.ok) {
+      const detail = typeof json === "object" ? (json?.message || JSON.stringify(json)) : String(json || "");
+      throw new Error(`Supabase HTTP ${response.status}: ${detail}`);
     }
-
-    if (!response.ok || json.ok === false) {
-      const message = explainGasFailure(action, response, text, json);
-      appendLog("error", `${action} failed`, {
-        message,
-        httpStatus: response.status,
-        responsePreview: text.slice(0, 1200),
-      });
-      throw new Error(message);
-    }
-
-    appendLog("info", `${action} succeeded / HTTP ${response.status}`, json);
     return json;
   }
 
   async function runPing() {
     setSyncStatus("syncing...");
     try {
-      const result = await postToGas("ping");
+      await supabaseRequest("GET", `/outlines?id=eq.${encodeURIComponent(sync.docId || "main")}&select=id`);
       setSyncStatus("synced");
-      appendLog("info", "Ping succeeded", result);
+      appendLog("info", "Ping succeeded", { supabaseUrl: sync.supabaseUrl });
     } catch (error) {
       setSyncStatus("error");
       appendLog("error", "Ping failed", error.message);
     }
   }
 
-  async function runDiagnostics() {
-    setSyncStatus("syncing...");
-    try {
-      await postToGas("diagnostics");
-      setSyncStatus("synced");
-    } catch (error) {
-      setSyncStatus("error");
-      appendLog("error", "Diagnostics failed", error.message);
-    }
-  }
-
-  async function runStatus() {
-    setSyncStatus("syncing...");
-    try {
-      await postToGas("status");
-      setSyncStatus("synced");
-    } catch (error) {
-      setSyncStatus("error");
-      appendLog("error", "Status failed", error.message);
-    }
-  }
-
   async function pushPayloadToRemote(payload, source = "manual", options = {}) {
     const payloadSummary = summarizeItems(payload.items || []);
     if (payloadSummary.isEffectivelyEmpty && !options.force) {
-      throw new Error("Local outline looks empty or starter-only. Push was blocked to protect remote data. Use Force Replace Remote only if you really want to overwrite Notion.");
+      throw new Error("ローカルのアウトラインが空またはスターターのみです。誤ってリモートを上書きするのを防ぐため Push をブロックしました。Force Replace Remote を使って上書きしてください。");
     }
-    const nextPayload = { ...payload, summary: payloadSummary };
-    const result = await postToGas("push", {
-      payload: nextPayload,
-      source,
-      snapshotBefore: options.snapshotBefore !== false,
-      force: Boolean(options.force),
-    });
+    const docId = sync.docId?.trim() || "main";
+    const row = {
+      id: docId,
+      payload: { ...payload, summary: payloadSummary },
+      version: payload.version || version,
+      updated_at: payload.updatedAt || nowIso(),
+    };
+    if (options.snapshotBefore !== false) {
+      const snapId = `snap_${docId}_${new Date().toISOString().replace(/[:.]/g, "-")}`;
+      supabaseRequest("POST", "/outlines", { id: snapId, payload: row.payload, version: row.version, updated_at: row.updated_at })
+        .catch((err) => appendLog("warn", "Snapshot 作成失敗（無視）", err.message));
+    }
+    const result = await supabaseRequest("POST", "/outlines", row);
+    appendLog("info", `${source}: push 完了`, { docId, version: row.version });
     return result;
   }
 
@@ -1817,17 +1755,17 @@ export default function App() {
       const result = await pushPayloadToRemote(payload, source, options);
       setSyncStatus("synced");
       setDirty(false);
-      appendLog("info", options.force ? "Force Replace Remote succeeded" : "Push succeeded", result);
+      appendLog("info", options.force ? "Force Replace Remote 完了" : "Push 完了", {});
       return result;
     } catch (error) {
       setSyncStatus("error");
-      appendLog("error", "Push failed", error.message);
+      appendLog("error", "Push 失敗", error.message);
       throw error;
     }
   }
 
   function applyRemotePayload(payload, result = {}) {
-    if (!payload || !Array.isArray(payload.items)) throw new Error("Remote payload has no items array");
+    if (!payload || !Array.isArray(payload.items)) throw new Error("リモートの payload に items がありません");
     setItems(payload.items);
     setVersion(Number(payload.version || result.remoteVersion || version + 1));
     setUpdatedAt(payload.updatedAt || result.remoteUpdatedAt || nowIso());
@@ -1841,17 +1779,20 @@ export default function App() {
   async function pullRemote(options = { apply: true }) {
     setSyncStatus("syncing...");
     try {
-      const result = await postToGas("pull");
-      const payload = result.payload;
+      const docId = sync.docId?.trim() || "main";
+      const rows = await supabaseRequest("GET", `/outlines?id=eq.${encodeURIComponent(docId)}&select=*`);
+      const row = Array.isArray(rows) ? rows[0] : null;
+      if (!row) throw new Error(`ドキュメント "${docId}" がリモートに存在しません。先に Push してください。`);
+      const payload = row.payload;
       if (options.apply !== false) {
-        applyRemotePayload(payload, result);
+        applyRemotePayload(payload, { remoteVersion: row.version, remoteUpdatedAt: row.updated_at });
         setSyncStatus("synced");
-        appendLog("info", "Pull succeeded", result);
+        appendLog("info", "Pull 完了", { docId, version: row.version });
       }
-      return result;
+      return { payload, version: row.version, updatedAt: row.updated_at };
     } catch (error) {
       setSyncStatus("error");
-      appendLog("error", "Pull failed", error.message);
+      appendLog("error", "Pull 失敗", error.message);
       throw error;
     }
   }
@@ -1859,80 +1800,61 @@ export default function App() {
   async function smartSync() {
     setSyncStatus("syncing...");
     try {
+      const docId = sync.docId?.trim() || "main";
       const localPayload = buildExportPayload();
       const localSummary = summarizeItems(localPayload.items);
-      const status = await postToGas("status");
-      const remoteSummary = status.summary || status.remoteSummary || { nodeCount: 0, charCount: 0, isEffectivelyEmpty: !status.exists };
-      const remoteLooksEmpty = !status.exists || !Number(status.remoteVersion || 0) || remoteSummary.isEffectivelyEmpty || Number(remoteSummary.nodeCount || 0) === 0;
 
-      // Daily snapshot (fire-and-forget; GAS側が未対応でも無視)
-      postToGas("dailySnapshot", { payload: localPayload }).catch(() => {});
+      const rows = await supabaseRequest("GET", `/outlines?id=eq.${encodeURIComponent(docId)}&select=*`);
+      const row = Array.isArray(rows) ? rows[0] : null;
+      const remoteLooksEmpty = !row || !row.payload || !Array.isArray(row.payload.items) || row.payload.items.length === 0;
+      const remoteSummary = row ? summarizeItems(row.payload?.items || []) : { nodeCount: 0, charCount: 0, isEffectivelyEmpty: true };
 
       if (localSummary.isEffectivelyEmpty && !remoteLooksEmpty) {
-        appendLog("info", "Smart Sync: local is empty/starter-only → pulling remote data", { localSummary, remoteSummary });
-        return await pullRemote();
+        appendLog("info", "Smart Sync: ローカルが空 → Pull", { localSummary, remoteSummary });
+        applyRemotePayload(row.payload, { remoteVersion: row.version, remoteUpdatedAt: row.updated_at });
+        setSyncStatus("synced");
+        return;
       }
 
       if (!localSummary.isEffectivelyEmpty && remoteLooksEmpty) {
-        appendLog("info", "Smart Sync: remote is empty → pushing local data", { localSummary, remoteSummary });
-        const result = await pushPayloadToRemote(localPayload, "smart-empty-remote", { snapshotBefore: true });
+        appendLog("info", "Smart Sync: リモートが空 → Push", { localSummary, remoteSummary });
+        await pushPayloadToRemote(localPayload, "smart-empty-remote", { snapshotBefore: false });
         setSyncStatus("synced");
         setDirty(false);
-        return result;
+        return;
       }
 
       if (localSummary.isEffectivelyEmpty && remoteLooksEmpty) {
         setSyncStatus("synced");
-        appendLog("info", "Smart Sync: both sides look empty. Nothing pushed.", { localSummary, remoteSummary });
-        return status;
+        appendLog("info", "Smart Sync: 両方空。何もしません。", {});
+        return;
       }
 
-      // 両側にデータあり → local が remote に比べて極端に少ない場合は Push 禁止
       if (isLocalTooSmallComparedToRemote(localSummary, remoteSummary)) {
-        appendLog("warn", "Smart Sync: local data is much smaller than remote — pulling to protect data", { localSummary, remoteSummary });
-        const pullResult = await postToGas("pull");
-        const remotePayload = pullResult.payload;
-        // local に非スターターのブロックがあればRemoteにAppend
+        appendLog("warn", "Smart Sync: ローカルがリモートより極端に少ない → Pull で保護", { localSummary, remoteSummary });
         const localNonStarter = (localPayload.items || []).filter((item) => !isStarterOutline([item]) && (countChars(item) > 0 || (item.children || []).length > 0));
         if (localNonStarter.length > 0) {
-          const mergedItems = appendImportedItems(remotePayload.items || [], localNonStarter);
-          const mergedPayload = {
-            ...remotePayload,
-            items: mergedItems,
-            summary: summarizeItems(mergedItems),
-            mergedAt: nowIso(),
-          };
+          const mergedItems = appendImportedItems(row.payload.items || [], localNonStarter);
+          const mergedPayload = { ...row.payload, items: mergedItems, summary: summarizeItems(mergedItems), mergedAt: nowIso() };
           applyRemotePayload(mergedPayload, { remoteVersion: mergedPayload.version, remoteUpdatedAt: mergedPayload.updatedAt });
-          appendLog("info", "Smart Sync: appended local non-starter items to pulled remote data", { appendedCount: localNonStarter.length });
+          appendLog("info", "Smart Sync: ローカルの非スターターをマージ", { appendedCount: localNonStarter.length });
         } else {
-          applyRemotePayload(remotePayload, pullResult);
-          appendLog("info", "Smart Sync: pulled remote data (no local items to append)", {});
+          applyRemotePayload(row.payload, { remoteVersion: row.version, remoteUpdatedAt: row.updated_at });
         }
         setSyncStatus("synced");
-        return pullResult;
+        return;
       }
 
-      // 両側に比較可能なデータあり → Merge してから Push
-      const pullResult = await postToGas("pull");
-      const remotePayload = pullResult.payload;
+      const remotePayload = row.payload;
       const mergedPayload = mergePayloads(localPayload, remotePayload);
       applyRemotePayload(mergedPayload, { remoteVersion: mergedPayload.version, remoteUpdatedAt: mergedPayload.updatedAt });
-      const pushResult = await postToGas("push", {
-        payload: mergedPayload,
-        source: "smart-merge",
-        snapshotBefore: true,
-      });
+      await pushPayloadToRemote(mergedPayload, "smart-merge", { snapshotBefore: true });
       setSyncStatus("synced");
       setDirty(false);
-      appendLog("info", "Smart Sync: merged local and remote, then pushed", {
-        localSummary,
-        remoteSummary,
-        mergedSummary: mergedPayload.summary,
-      });
-      return pushResult;
+      appendLog("info", "Smart Sync: マージして Push 完了", { localSummary, remoteSummary });
     } catch (error) {
       setSyncStatus("error");
-      appendLog("error", "Smart Sync failed", error.message);
+      appendLog("error", "Smart Sync 失敗", error.message);
       throw error;
     }
   }
@@ -1944,29 +1866,31 @@ export default function App() {
   async function listSnapshots() {
     setSnapshotListStatus("loading...");
     try {
-      const result = await postToGas("listSnapshots");
-      const snaps = Array.isArray(result.snapshots) ? result.snapshots : [];
+      const docId = sync.docId?.trim() || "main";
+      const rows = await supabaseRequest("GET", `/outlines?id=like.snap_${encodeURIComponent(docId)}_%&select=id,updated_at&order=updated_at.desc&limit=20`);
+      const snaps = Array.isArray(rows) ? rows.map((r) => ({ id: r.id, title: r.id.replace(`snap_${docId}_`, "") })) : [];
       setSnapshotList(snaps);
-      setSnapshotListStatus(snaps.length > 0 ? `${snaps.length} snapshot(s) found` : "No snapshots found");
-      appendLog("info", "List Snapshots succeeded", result);
+      setSnapshotListStatus(snaps.length > 0 ? `${snaps.length} 件のスナップショット` : "スナップショットなし");
+      appendLog("info", "List Snapshots 完了", { count: snaps.length });
     } catch (error) {
-      setSnapshotListStatus(`Failed: ${error.message}`);
-      appendLog("error", "List Snapshots failed", error.message);
+      setSnapshotListStatus(`失敗: ${error.message}`);
+      appendLog("error", "List Snapshots 失敗", error.message);
     }
   }
 
   async function downloadSnapshotById(snapshotId, label) {
     try {
-      const result = await postToGas("getSnapshot", { snapshotId });
-      if (result.payload) {
+      const rows = await supabaseRequest("GET", `/outlines?id=eq.${encodeURIComponent(snapshotId)}&select=*`);
+      const row = Array.isArray(rows) ? rows[0] : null;
+      if (row?.payload) {
         const filename = `quietliner-snapshot-${(label || snapshotId || "unknown").replace(/[^\w-]/g, "_")}-${Date.now()}.json`;
-        downloadText(filename, JSON.stringify(result.payload, null, 2));
-        appendLog("info", `Snapshot downloaded: ${label || snapshotId}`, {});
+        downloadText(filename, JSON.stringify(row.payload, null, 2));
+        appendLog("info", `Snapshot ダウンロード: ${label || snapshotId}`, {});
       } else {
-        appendLog("error", "Snapshot download: no payload in response", result);
+        appendLog("error", "Snapshot: payload が見つかりません", { snapshotId });
       }
     } catch (error) {
-      appendLog("error", "Download Snapshot failed", error.message);
+      appendLog("error", "Snapshot ダウンロード失敗", error.message);
     }
   }
 
@@ -2194,6 +2118,15 @@ export default function App() {
           />
           <div className="topbar-spacer" />
           <div className="top-version" title="Current app version">{APP_VERSION_LABEL}</div>
+          <button
+            className="ghost-button"
+            type="button"
+            title={settings.typewriterMode ? "タイプライターモード ON" : "タイプライターモード OFF"}
+            style={{ opacity: settings.typewriterMode ? 1 : 0.48 }}
+            onClick={() => setSettings((prev) => ({ ...prev, typewriterMode: !prev.typewriterMode }))}
+          >
+            ⌨
+          </button>
           <button className="ghost-button sync-top-button" type="button" data-status={syncStatus} onClick={() => smartSync().catch(() => {})}>
             {syncStatus === "syncing..." ? "Syncing…" : "Sync"}
           </button>
@@ -2444,19 +2377,24 @@ export default function App() {
                   <span>Device ID</span>
                   <code>{deviceId}</code>
                 </div>
+                <p className="sync-hint">Supabase プロジェクトの URL と anon/public key を入力してください。テーブル <code>outlines</code>（<code>id text PK, payload jsonb, version int, updated_at text</code>）を作成し、RLS で anon アクセスを許可してください。</p>
                 <label>
-                  GAS Web App URL
-                  <input value={sync.gasUrl} onChange={(event) => setSync((prev) => ({ ...prev, gasUrl: event.target.value }))} placeholder="https://script.google.com/macros/s/.../exec" />
+                  Supabase URL
+                  <input value={sync.supabaseUrl} onChange={(event) => setSync((prev) => ({ ...prev, supabaseUrl: event.target.value }))} placeholder="https://xxxxxxxxxxxx.supabase.co" />
                 </label>
                 <label>
-                  Shared Secret
-                  <input type="password" value={sync.secret} onChange={(event) => setSync((prev) => ({ ...prev, secret: event.target.value }))} placeholder="QUIETLINER_SECRETと同じ値" />
+                  Supabase Anon Key
+                  <input type="password" value={sync.supabaseKey} onChange={(event) => setSync((prev) => ({ ...prev, supabaseKey: event.target.value }))} placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..." />
+                </label>
+                <label>
+                  Document ID
+                  <input value={sync.docId || "main"} onChange={(event) => setSync((prev) => ({ ...prev, docId: event.target.value }))} placeholder="main" />
                 </label>
                 <label className="check-row">
                   <input type="checkbox" checked={sync.autoSync} onChange={(event) => setSync((prev) => ({ ...prev, autoSync: event.target.checked }))} />
                   Auto Sync ON/OFF
                 </label>
-                <p className="sync-hint">Smart Syncはローカルデータが少ない場合のPushを自動ブロックし、必要に応じてRemoteからPullまたはMergeします。</p>
+                <p className="sync-hint">Smart Sync はローカルデータが少ない場合の Push を自動ブロックし、必要に応じて Pull またはマージします。</p>
 
                 <div className="sync-state-card">
                   <span>Status</span>
@@ -2466,9 +2404,7 @@ export default function App() {
 
                 <div className="sync-buttons">
                   <button type="button" onClick={runPing}>Ping</button>
-                  <button type="button" onClick={runDiagnostics}>Diagnostics</button>
-                  <button type="button" onClick={runStatus}>Status</button>
-                  <button type="button" onClick={() => pushRemote().catch(() => {})}>Push Backup</button>
+                  <button type="button" onClick={() => pushRemote().catch(() => {})}>Push</button>
                   <button type="button" onClick={() => pullRemote().catch(() => {})}>Pull</button>
                   <button type="button" onClick={() => smartSync().catch(() => {})}>Smart Sync</button>
                   <button type="button" onClick={() => setSyncLog([])}>Clear Log</button>
@@ -2476,7 +2412,7 @@ export default function App() {
 
                 <div className="sync-section">
                   <div className="sync-section-title">Snapshots</div>
-                  <p className="sync-hint">GAS側でlistSnapshots / getSnapshotアクションが必要です。未対応のGASでもエラーになるだけです。</p>
+                  <p className="sync-hint">Push 時に自動スナップショットを作成します。過去 20 件まで一覧表示できます。</p>
                   <div className="sync-buttons">
                     <button type="button" onClick={listSnapshots}>List Snapshots</button>
                   </div>
@@ -2503,7 +2439,7 @@ export default function App() {
                   </button>
                   {showDangerZone && (
                     <div className="danger-zone-content">
-                      <p className="danger-warning">Force Replace Remoteは現在の端末のデータでNotion側を完全に上書きします。実行前にSnapshotを作成しますが、Notionの既存データは失われます。</p>
+                      <p className="danger-warning">Force Replace Remote は現在の端末のデータで Supabase 側を完全に上書きします。実行前にスナップショットを作成しますが、リモートの既存データは失われます。</p>
                       <label>
                         確認のため <strong>REPLACE REMOTE</strong> と入力してください
                         <input
