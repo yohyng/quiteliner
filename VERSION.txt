@@ -1,2 +1,2 @@
-Quietliner v5.7.2
-Build: Syncエラーをバナーで表示、listSnapshotsのURLエンコード修正
+Quietliner v5.7.3
+Build: Sync時に編集中ブロックのtypingが壊れる不具合を修正（draft保持・ズーム維持）

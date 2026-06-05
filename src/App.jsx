@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-const APP_VERSION = "5.7.2";
+const APP_VERSION = "5.7.3";
 const APP_VERSION_LABEL = `Quietliner v${APP_VERSION}`;
 const STORAGE_KEY = "quietliner.state.v4";
 const DEVICE_KEY = "quietliner.device.v1";
@@ -1872,8 +1872,11 @@ export default function App() {
     setVersion(Number(payload.version || result.remoteVersion || version + 1));
     setUpdatedAt(payload.updatedAt || result.remoteUpdatedAt || nowIso());
     if (payload.settings) setSettings((prev) => ({ ...prev, ...payload.settings }));
-    setDrafts({});
-    setZoomRootId(null);
+    // 編集中ブロックの未確定 draft は保持する（Sync の往復中に打った文字や
+    // カーソル位置が失われて「タイピングできない」状態になるのを防ぐ）。
+    setDrafts((prev) => (activeId && activeId in prev ? { [activeId]: prev[activeId] } : {}));
+    // ズーム中のノードが新しいツリーにまだ存在するなら、ズームは維持する。
+    setZoomRootId((prev) => (prev && findPath(payload.items, prev) ? prev : null));
     setSelectedIds([]);
     setDirty(false);
   }
