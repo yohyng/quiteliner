@@ -1,12 +1,12 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-const APP_VERSION = "5.7.0";
+const APP_VERSION = "5.7.1";
 const APP_VERSION_LABEL = `Quietliner v${APP_VERSION}`;
 const STORAGE_KEY = "quietliner.state.v4";
 const DEVICE_KEY = "quietliner.device.v1";
 const MAX_LOGS = 80;
 
-const appStateRef = { typewriterMode: false, typewriterAnchor: 0.42 };
+const appStateRef = { typewriterMode: false, typewriterAnchor: 0.72 };
 
 // --- Typewriter mode caret measurement -------------------------------------
 // Mirror the textarea into a hidden div to find the viewport-Y of the caret's
@@ -73,7 +73,7 @@ function repositionCaretTypewriter(el) {
   if (caretTop == null) return;
   const vh = window.innerHeight || document.documentElement.clientHeight || 0;
   if (!vh) return;
-  const anchor = vh * (appStateRef.typewriterAnchor || 0.42);
+  const anchor = vh * (appStateRef.typewriterAnchor || 0.72);
   const delta = caretTop - anchor;
   if (Math.abs(delta) > 1.5) {
     window.scrollBy({ top: delta, behavior: "auto" });
@@ -127,7 +127,7 @@ const DEFAULT_SETTINGS = {
   textDark: "#eeeeee",
   rootTitle: "All Notes",
   typewriterMode: false,
-  typewriterAnchor: 0.42,
+  typewriterAnchor: 0.72,
 };
 
 const DEFAULT_SYNC = {
@@ -1159,7 +1159,7 @@ export default function App() {
 
   useEffect(() => {
     appStateRef.typewriterMode = Boolean(settings.typewriterMode);
-    appStateRef.typewriterAnchor = Number(settings.typewriterAnchor) || 0.42;
+    appStateRef.typewriterAnchor = Number(settings.typewriterAnchor) || 0.72;
   }, [settings.typewriterMode, settings.typewriterAnchor]);
 
   // Typewriter mode: keep the caret's line locked at the anchor on every caret
@@ -2394,8 +2394,8 @@ export default function App() {
                 </label>
                 {settings.typewriterMode && (
                   <label className="range-field">
-                    Typewriter Position <span>{Math.round((Number(settings.typewriterAnchor) || 0.42) * 100)}%</span>
-                    <input type="range" min="0.2" max="0.6" step="0.02" value={Number(settings.typewriterAnchor) || 0.42} onChange={(event) => setSettings((prev) => ({ ...prev, typewriterAnchor: Number(event.target.value) }))} />
+                    Typewriter Lock Position <span>{Math.round((Number(settings.typewriterAnchor) || 0.72) * 100)}%</span>
+                    <input type="range" min="0.45" max="0.85" step="0.02" value={Number(settings.typewriterAnchor) || 0.72} onChange={(event) => setSettings((prev) => ({ ...prev, typewriterAnchor: Number(event.target.value) }))} />
                   </label>
                 )}
                 <label>

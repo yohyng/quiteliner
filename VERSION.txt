@@ -1,2 +1,2 @@
-Quietliner v5.7.0
-Build: タイプライターモード本実装（入力行を画面の固定位置にロック）+ Supabase 同期へ移行
+Quietliner v5.7.1
+Build: タイプライターモードを Stone 風に改良（中央から書き始め下部の固定行へドリフト）

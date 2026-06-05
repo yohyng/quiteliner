@@ -762,9 +762,12 @@ button {
   background: color-mix(in srgb, var(--app-text) 10%, transparent);
 }
 
-/* Typewriter mode: extra bottom room so the last lines can scroll up to the
-   anchor position even at the very end of the document. */
+/* Typewriter mode (Stone-style): a tall top pad so an empty/short document
+   begins near the vertical center, then the caret drifts down as you write
+   and locks at the lower "typewriter line"; tall bottom pad lets the last
+   lines scroll up to that lock position. */
 .app.typewriter-mode .editor-wrap {
+  padding-top: max(38vh, 220px);
   padding-bottom: max(60vh, 420px);
 }
 
