@@ -1,2 +1,2 @@
-Quietliner v5.6.9
-Build: Undo/Redo (Ctrl+Z/Ctrl+Shift+Z) + 複数ブロック選択時のアクションメニュー追加
+Quietliner v5.7.0
+Build: タイプライターモード本実装（入力行を画面の固定位置にロック）+ Supabase 同期へ移行
