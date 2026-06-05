@@ -762,6 +762,16 @@ button {
   background: color-mix(in srgb, var(--app-text) 10%, transparent);
 }
 
+/* Typewriter mode: extra bottom room so the last lines can scroll up to the
+   anchor position even at the very end of the document. */
+.app.typewriter-mode .editor-wrap {
+  padding-bottom: max(60vh, 420px);
+}
+
+.app.typewriter-mode .outline-list::after {
+  height: max(60vh, 420px);
+}
+
 .select-grip {
   width: 12px;
   height: 28px;

@@ -1,12 +1,84 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-const APP_VERSION = "5.6.9";
+const APP_VERSION = "5.7.0";
 const APP_VERSION_LABEL = `Quietliner v${APP_VERSION}`;
 const STORAGE_KEY = "quietliner.state.v4";
 const DEVICE_KEY = "quietliner.device.v1";
 const MAX_LOGS = 80;
 
-const appStateRef = { typewriterMode: false };
+const appStateRef = { typewriterMode: false, typewriterAnchor: 0.42 };
+
+// --- Typewriter mode caret measurement -------------------------------------
+// Mirror the textarea into a hidden div to find the viewport-Y of the caret's
+// visual line, so scrolling can lock the *line being typed* (not the block top)
+// at a fixed anchor — even inside multi-line wrapped blocks.
+const CARET_MIRROR_PROPS = [
+  "paddingTop", "paddingRight", "paddingBottom", "paddingLeft",
+  "borderTopWidth", "borderRightWidth", "borderBottomWidth", "borderLeftWidth",
+  "fontFamily", "fontSize", "fontWeight", "fontStyle", "fontVariant", "fontStretch",
+  "lineHeight", "letterSpacing", "textAlign", "textIndent", "textTransform",
+  "wordSpacing", "wordBreak", "tabSize",
+];
+
+let _caretMirror = null;
+
+function getCaretLineViewportTop(el) {
+  if (!el || typeof window === "undefined" || typeof document === "undefined") return null;
+  if (typeof el.selectionStart !== "number") return null;
+  const computed = window.getComputedStyle(el);
+
+  if (!_caretMirror) {
+    _caretMirror = document.createElement("div");
+    _caretMirror.setAttribute("aria-hidden", "true");
+    document.body.appendChild(_caretMirror);
+  }
+  const div = _caretMirror;
+  const style = div.style;
+  style.position = "absolute";
+  style.top = "0";
+  style.left = "-9999px";
+  style.visibility = "hidden";
+  style.pointerEvents = "none";
+  style.whiteSpace = "pre-wrap";
+  style.overflowWrap = "anywhere";
+  style.boxSizing = "content-box";
+  style.height = "auto";
+  for (const prop of CARET_MIRROR_PROPS) {
+    try { style[prop] = computed[prop]; } catch { /* noop */ }
+  }
+  // content-box width = textarea inner content width (clientWidth minus h-padding)
+  const padL = parseFloat(computed.paddingLeft) || 0;
+  const padR = parseFloat(computed.paddingRight) || 0;
+  style.width = `${Math.max(0, el.clientWidth - padL - padR)}px`;
+
+  const caretIndex = el.selectionStart;
+  div.textContent = el.value.slice(0, caretIndex);
+  const marker = document.createElement("span");
+  marker.textContent = el.value.slice(caretIndex) || ".";
+  div.appendChild(marker);
+
+  const caretTopRelative = marker.offsetTop + (parseFloat(computed.borderTopWidth) || 0);
+  div.removeChild(marker);
+  div.textContent = "";
+
+  const rect = el.getBoundingClientRect();
+  return rect.top - el.scrollTop + caretTopRelative;
+}
+
+function repositionCaretTypewriter(el) {
+  if (!el || typeof window === "undefined") return;
+  // Don't fight an active text selection (e.g. drag-select).
+  if (el.selectionStart !== el.selectionEnd) return;
+  const caretTop = getCaretLineViewportTop(el);
+  if (caretTop == null) return;
+  const vh = window.innerHeight || document.documentElement.clientHeight || 0;
+  if (!vh) return;
+  const anchor = vh * (appStateRef.typewriterAnchor || 0.42);
+  const delta = caretTop - anchor;
+  if (Math.abs(delta) > 1.5) {
+    window.scrollBy({ top: delta, behavior: "auto" });
+  }
+}
 
 const FONT_OPTIONS = {
   mincho: '"Yu Mincho", "Hiragino Mincho ProN", "Noto Serif JP", serif',
@@ -55,6 +127,7 @@ const DEFAULT_SETTINGS = {
   textDark: "#eeeeee",
   rootTitle: "All Notes",
   typewriterMode: false,
+  typewriterAnchor: 0.42,
 };
 
 const DEFAULT_SYNC = {
@@ -387,19 +460,14 @@ function isImeEvent(event) {
 
 function keepActiveEditorComfortable(el) {
   if (!el || typeof window === "undefined") return;
+  if (appStateRef.typewriterMode) {
+    window.requestAnimationFrame(() => repositionCaretTypewriter(el));
+    return;
+  }
   window.requestAnimationFrame(() => {
     const rect = el.getBoundingClientRect();
     const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 0;
     if (!viewportHeight) return;
-
-    if (appStateRef.typewriterMode) {
-      const targetTop = viewportHeight * 0.38;
-      const delta = rect.top - targetTop;
-      if (Math.abs(delta) > 10) {
-        window.scrollBy({ top: delta, behavior: "smooth" });
-      }
-      return;
-    }
 
     const bottomComfort = Math.min(420, Math.max(260, viewportHeight * 0.38));
     const topComfort = 110;
@@ -1091,7 +1159,34 @@ export default function App() {
 
   useEffect(() => {
     appStateRef.typewriterMode = Boolean(settings.typewriterMode);
-  }, [settings.typewriterMode]);
+    appStateRef.typewriterAnchor = Number(settings.typewriterAnchor) || 0.42;
+  }, [settings.typewriterMode, settings.typewriterAnchor]);
+
+  // Typewriter mode: keep the caret's line locked at the anchor on every caret
+  // move (typing, arrows, click) via a single selectionchange listener.
+  useEffect(() => {
+    if (!settings.typewriterMode || typeof document === "undefined") return undefined;
+    let rafId = null;
+    const run = () => {
+      rafId = null;
+      const el = document.activeElement;
+      if (!el || el.tagName !== "TEXTAREA") return;
+      if (!el.classList.contains("outline-input") && !el.classList.contains("zoom-title-input")) return;
+      repositionCaretTypewriter(el);
+    };
+    const schedule = () => {
+      if (rafId != null) return;
+      rafId = window.requestAnimationFrame(run);
+    };
+    document.addEventListener("selectionchange", schedule);
+    window.addEventListener("resize", schedule);
+    schedule(); // center immediately when toggled on
+    return () => {
+      if (rafId != null) cancelAnimationFrame(rafId);
+      document.removeEventListener("selectionchange", schedule);
+      window.removeEventListener("resize", schedule);
+    };
+  }, [settings.typewriterMode, settings.typewriterAnchor]);
 
   const appBackground = activeTheme === "dark" ? settings.bgDark : settings.bgLight;
   const appTextColor = activeTheme === "dark" ? settings.textDark : settings.textLight;
@@ -2055,7 +2150,7 @@ export default function App() {
   };
 
   return (
-    <div className={`app theme-${activeTheme} ${uiHidden ? "ui-hidden" : ""} ${settings.sidebarCollapsed ? "sidebar-collapsed" : ""} ${isSelectingRows ? "is-selecting" : ""}`} style={appStyle} data-bg-style={settings.backgroundStyle || "solid"} data-noise-style={settings.backgroundNoise || "mixed"}>
+    <div className={`app theme-${activeTheme} ${uiHidden ? "ui-hidden" : ""} ${settings.sidebarCollapsed ? "sidebar-collapsed" : ""} ${isSelectingRows ? "is-selecting" : ""} ${settings.typewriterMode ? "typewriter-mode" : ""}`} style={appStyle} data-bg-style={settings.backgroundStyle || "solid"} data-noise-style={settings.backgroundNoise || "mixed"}>
       <div className="top-hot-zone" onMouseEnter={() => setUiHidden(false)} />
 
       {settings.sidebarCollapsed && (
@@ -2293,6 +2388,16 @@ export default function App() {
                   Sidebar Width <span>{Math.round(Number(settings.sidebarWidth || 252))}px</span>
                   <input type="range" min="196" max="420" step="4" value={settings.sidebarWidth || 252} onChange={(event) => setSettings((prev) => ({ ...prev, sidebarWidth: Number(event.target.value) }))} />
                 </label>
+                <label className="check-row wide">
+                  <input type="checkbox" checked={Boolean(settings.typewriterMode)} onChange={(event) => setSettings((prev) => ({ ...prev, typewriterMode: event.target.checked }))} />
+                  Typewriter Mode（入力行を画面の固定位置にロック）
+                </label>
+                {settings.typewriterMode && (
+                  <label className="range-field">
+                    Typewriter Position <span>{Math.round((Number(settings.typewriterAnchor) || 0.42) * 100)}%</span>
+                    <input type="range" min="0.2" max="0.6" step="0.02" value={Number(settings.typewriterAnchor) || 0.42} onChange={(event) => setSettings((prev) => ({ ...prev, typewriterAnchor: Number(event.target.value) }))} />
+                  </label>
+                )}
                 <label>
                   Background Style
                   <select value={settings.backgroundStyle || "solid"} onChange={(event) => setSettings((prev) => ({ ...prev, backgroundStyle: event.target.value }))}>
