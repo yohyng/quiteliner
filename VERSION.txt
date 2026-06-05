@@ -1,2 +1,2 @@
-Quietliner v5.7.1
-Build: タイプライターモードを Stone 風に改良（中央から書き始め下部の固定行へドリフト）
+Quietliner v5.7.2
+Build: Syncエラーをバナーで表示、listSnapshotsのURLエンコード修正

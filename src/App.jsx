@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-const APP_VERSION = "5.7.1";
+const APP_VERSION = "5.7.2";
 const APP_VERSION_LABEL = `Quietliner v${APP_VERSION}`;
 const STORAGE_KEY = "quietliner.state.v4";
 const DEVICE_KEY = "quietliner.device.v1";
@@ -1134,6 +1134,7 @@ export default function App() {
   const [showDangerZone, setShowDangerZone] = useState(false);
   const [snapshotList, setSnapshotList] = useState([]);
   const [snapshotListStatus, setSnapshotListStatus] = useState("");
+  const [lastSyncError, setLastSyncError] = useState("");
 
   const inputRefs = useRef(new Map());
   const autoSyncTimer = useRef(null);
@@ -1429,6 +1430,10 @@ export default function App() {
     window.addEventListener("pointermove", handleMove);
     return () => window.removeEventListener("pointermove", handleMove);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (syncStatus !== "error") setLastSyncError("");
+  }, [syncStatus]);
 
   useEffect(() => {
     if (!sync.autoSync || !dirty || !sync.supabaseUrl || !sync.supabaseKey) return;
@@ -1817,6 +1822,7 @@ export default function App() {
       appendLog("info", "Ping succeeded", { supabaseUrl: sync.supabaseUrl });
     } catch (error) {
       setSyncStatus("error");
+      setLastSyncError(error.message);
       appendLog("error", "Ping failed", error.message);
     }
   }
@@ -1854,6 +1860,7 @@ export default function App() {
       return result;
     } catch (error) {
       setSyncStatus("error");
+      setLastSyncError(error.message);
       appendLog("error", "Push 失敗", error.message);
       throw error;
     }
@@ -1887,6 +1894,7 @@ export default function App() {
       return { payload, version: row.version, updatedAt: row.updated_at };
     } catch (error) {
       setSyncStatus("error");
+      setLastSyncError(error.message);
       appendLog("error", "Pull 失敗", error.message);
       throw error;
     }
@@ -1949,6 +1957,7 @@ export default function App() {
       appendLog("info", "Smart Sync: マージして Push 完了", { localSummary, remoteSummary });
     } catch (error) {
       setSyncStatus("error");
+      setLastSyncError(error.message);
       appendLog("error", "Smart Sync 失敗", error.message);
       throw error;
     }
@@ -1962,7 +1971,7 @@ export default function App() {
     setSnapshotListStatus("loading...");
     try {
       const docId = sync.docId?.trim() || "main";
-      const rows = await supabaseRequest("GET", `/outlines?id=like.snap_${encodeURIComponent(docId)}_%&select=id,updated_at&order=updated_at.desc&limit=20`);
+      const rows = await supabaseRequest("GET", `/outlines?id=like.snap_${encodeURIComponent(docId)}_%25&select=id,updated_at&order=updated_at.desc&limit=20`);
       const snaps = Array.isArray(rows) ? rows.map((r) => ({ id: r.id, title: r.id.replace(`snap_${docId}_`, "") })) : [];
       setSnapshotList(snaps);
       setSnapshotListStatus(snaps.length > 0 ? `${snaps.length} 件のスナップショット` : "スナップショットなし");
@@ -2222,12 +2231,26 @@ export default function App() {
           >
             ⌨
           </button>
-          <button className="ghost-button sync-top-button" type="button" data-status={syncStatus} onClick={() => smartSync().catch(() => {})}>
-            {syncStatus === "syncing..." ? "Syncing…" : "Sync"}
+          <button
+            className="ghost-button sync-top-button"
+            type="button"
+            data-status={syncStatus}
+            title={lastSyncError || undefined}
+            onClick={() => smartSync().catch(() => {})}
+          >
+            {syncStatus === "syncing..." ? "Syncing…" : syncStatus === "error" ? "Sync ⚠" : "Sync"}
           </button>
           <button className="ghost-button" type="button" onClick={addRootNode}>＋ New</button>
           <button className="ghost-button" type="button" onClick={() => { setSettingsOpen(true); setSettingsTab("appearance"); }}>Settings</button>
         </header>
+
+        {syncStatus === "error" && lastSyncError && (
+          <div className="sync-error-banner">
+            <span title={lastSyncError}>⚠ {lastSyncError}</span>
+            <button type="button" onClick={() => { setSettingsOpen(true); setSettingsTab("sync"); }}>詳細</button>
+            <button type="button" className="sync-error-dismiss" onClick={() => setSyncStatus("local only")}>×</button>
+          </div>
+        )}
 
         <section className="editor-wrap" onMouseDown={() => setUiHidden(false)}>
           <div className="editor-header" data-zoomed={zoomRootNode ? "true" : "false"}>
