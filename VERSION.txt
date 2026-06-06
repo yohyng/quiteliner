@@ -1,2 +1,2 @@
-Quietliner v5.7.4
-Build: アウトライナー標準キー操作を補完（空ブロック削除で子保持・行頭Backspace結合・Enter分割・行対応の矢印移動・Alt+↑↓並べ替え・⌘.折りたたみ）
+Quietliner v5.7.5
+Build: Enterフォーカス競合・focusNode二重発火によるタイピング不具合を修正

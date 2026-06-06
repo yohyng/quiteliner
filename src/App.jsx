@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-const APP_VERSION = "5.7.4";
+const APP_VERSION = "5.7.5";
 const APP_VERSION_LABEL = `Quietliner v${APP_VERSION}`;
 const STORAGE_KEY = "quietliner.state.v4";
 const DEVICE_KEY = "quietliner.device.v1";
@@ -1335,35 +1335,35 @@ export default function App() {
 
   const focusNode = useCallback((id, select = "end") => {
     if (!id) return;
+    let done = false;
     const run = () => {
       const el = inputRefs.current.get(id);
-      if (!el) return;
+      if (!el) return false;
       el.focus({ preventScroll: false });
       const end = el.value.length;
       const pos = select === "start" ? 0 : end;
-      try {
-        el.setSelectionRange(pos, pos);
-      } catch {
-        // noop
-      }
+      try { el.setSelectionRange(pos, pos); } catch { /* noop */ }
       keepActiveEditorComfortable(el);
+      return true;
     };
-    requestAnimationFrame(run);
-    setTimeout(run, 30);
+    requestAnimationFrame(() => { done = run(); });
+    setTimeout(() => { if (!done) run(); }, 50);
   }, []);
 
   const focusNodeAtIndex = useCallback((id, index) => {
     if (!id) return;
+    let done = false;
     const run = () => {
       const el = inputRefs.current.get(id);
-      if (!el) return;
+      if (!el) return false;
       el.focus({ preventScroll: false });
       const pos = Math.max(0, Math.min(index ?? el.value.length, el.value.length));
       try { el.setSelectionRange(pos, pos); } catch { /* noop */ }
       keepActiveEditorComfortable(el);
+      return true;
     };
-    requestAnimationFrame(run);
-    setTimeout(run, 30);
+    requestAnimationFrame(() => { done = run(); });
+    setTimeout(() => { if (!done) run(); }, 50);
   }, []);
 
   const appendLog = useCallback((level, message, detail = "") => {
@@ -1735,9 +1735,7 @@ export default function App() {
       const before = currentText.slice(0, caret);
       const after = currentText.slice(caret);
       const next = makeNode(after);
-      applyTextThen(node.id, before, (base) => insertSiblingAfter(base, node.id, next));
-      setDrafts((prev) => ({ ...prev, [next.id]: after }));
-      focusNodeAtIndex(next.id, 0);
+      applyTextThen(node.id, before, (base) => insertSiblingAfter(base, node.id, next), next.id);
       return;
     }
 
