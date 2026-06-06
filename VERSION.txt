@@ -1,2 +1,2 @@
-Quietliner v5.7.5
-Build: Enterフォーカス競合・focusNode二重発火によるタイピング不具合を修正
+Quietliner v5.7.6
+Build: Tab/Shift+Tabでカーソルが末尾に飛ぶ不具合を修正（カーソル位置を保持）

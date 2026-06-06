@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-const APP_VERSION = "5.7.5";
+const APP_VERSION = "5.7.6";
 const APP_VERSION_LABEL = `Quietliner v${APP_VERSION}`;
 const STORAGE_KEY = "quietliner.state.v4";
 const DEVICE_KEY = "quietliner.device.v1";
@@ -1741,7 +1741,9 @@ export default function App() {
 
     if (event.key === "Tab") {
       event.preventDefault();
-      applyTextThen(node.id, currentText, (base) => (event.shiftKey ? outdentNode(base, node.id) : indentNode(base, node.id)), node.id);
+      const caret = typeof el?.selectionStart === "number" ? el.selectionStart : currentText.length;
+      applyTextThen(node.id, currentText, (base) => (event.shiftKey ? outdentNode(base, node.id) : indentNode(base, node.id)));
+      focusNodeAtIndex(node.id, caret);
       return;
     }
 
