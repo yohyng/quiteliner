@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-const APP_VERSION = "5.7.3";
+const APP_VERSION = "5.7.4";
 const APP_VERSION_LABEL = `Quietliner v${APP_VERSION}`;
 const STORAGE_KEY = "quietliner.state.v4";
 const DEVICE_KEY = "quietliner.device.v1";
@@ -78,6 +78,102 @@ function repositionCaretTypewriter(el) {
   if (Math.abs(delta) > 1.5) {
     window.scrollBy({ top: delta, behavior: "auto" });
   }
+}
+
+// --- Caret line navigation -------------------------------------------------
+// A second hidden mirror (padding/border stripped, content coordinates only)
+// used to detect whether the caret sits on the first/last visual line of a
+// wrapped block, and to find the index closest to a target x on a given line —
+// so ↑/↓ can move *within* a multi-line block and only cross to a neighbouring
+// block at the top/bottom edge, preserving the horizontal column.
+const NAV_MIRROR_PROPS = [
+  "fontFamily", "fontSize", "fontWeight", "fontStyle", "fontVariant", "fontStretch",
+  "lineHeight", "letterSpacing", "textAlign", "textIndent", "textTransform",
+  "wordSpacing", "wordBreak", "tabSize",
+];
+let _navMirror = null;
+
+function setupNavMirror(el) {
+  const cs = window.getComputedStyle(el);
+  if (!_navMirror) {
+    _navMirror = document.createElement("div");
+    _navMirror.setAttribute("aria-hidden", "true");
+    document.body.appendChild(_navMirror);
+  }
+  const div = _navMirror;
+  const s = div.style;
+  s.position = "absolute";
+  s.top = "0";
+  s.left = "-9999px";
+  s.visibility = "hidden";
+  s.pointerEvents = "none";
+  s.whiteSpace = "pre-wrap";
+  s.overflowWrap = "anywhere";
+  s.boxSizing = "content-box";
+  s.padding = "0";
+  s.border = "0";
+  s.height = "auto";
+  for (const prop of NAV_MIRROR_PROPS) {
+    try { s[prop] = cs[prop]; } catch { /* noop */ }
+  }
+  const padL = parseFloat(cs.paddingLeft) || 0;
+  const padR = parseFloat(cs.paddingRight) || 0;
+  s.width = `${Math.max(0, el.clientWidth - padL - padR)}px`;
+  const lineHeight = parseFloat(cs.lineHeight) || (parseFloat(cs.fontSize) || 16) * 1.4;
+  return { div, lineHeight };
+}
+
+function measureNavIndex(div, value, index) {
+  div.textContent = value.slice(0, index);
+  const marker = document.createElement("span");
+  marker.textContent = "​";
+  div.appendChild(marker);
+  const top = marker.offsetTop;
+  const left = marker.offsetLeft;
+  div.removeChild(marker);
+  return { top, left };
+}
+
+function getCaretNav(el) {
+  if (!el || typeof window === "undefined" || typeof el.selectionStart !== "number") return null;
+  const { div, lineHeight } = setupNavMirror(el);
+  const value = el.value;
+  const { top, left } = measureNavIndex(div, value, el.selectionStart);
+  div.textContent = value;
+  const totalHeight = div.scrollHeight;
+  div.textContent = "";
+  return {
+    top,
+    left,
+    lineHeight,
+    totalHeight,
+    isFirstLine: top < lineHeight * 0.75,
+    isLastLine: top + lineHeight >= totalHeight - 2,
+  };
+}
+
+function caretIndexForX(el, line, x) {
+  if (!el || typeof window === "undefined") return 0;
+  const value = el.value;
+  const len = value.length;
+  if (len === 0) return 0;
+  if (len > 600) return line === "first" ? 0 : len; // avoid O(n) reflow storms
+  const { div, lineHeight } = setupNavMirror(el);
+  div.textContent = value;
+  const totalHeight = div.scrollHeight;
+  div.textContent = "";
+  const targetTop = line === "first" ? 0 : Math.max(0, totalHeight - lineHeight);
+  let best = line === "first" ? 0 : len;
+  let bestDx = Infinity;
+  for (let i = 0; i <= len; i += 1) {
+    const { top, left } = measureNavIndex(div, value, i);
+    if (Math.abs(top - targetTop) <= lineHeight * 0.6) {
+      const dx = Math.abs(left - x);
+      if (dx < bestDx) { bestDx = dx; best = i; }
+    }
+  }
+  div.textContent = "";
+  return best;
 }
 
 const FONT_OPTIONS = {
@@ -424,6 +520,45 @@ function deleteNodeSafe(items, id) {
   }
   if (focusId === id) focusId = flattenVisible(root)[0]?.node.id || null;
   return { items: root, focusId };
+}
+
+// Delete a block but keep its children: the children are spliced into the
+// block's own position (same parent, same level), so information stored below
+// an empty block survives the deletion.
+function deleteNodeKeepChildren(items, id) {
+  const root = cloneItems(items);
+  const visibleBefore = flattenVisible(root).map(({ node }) => node.id);
+  const currentIndex = visibleBefore.indexOf(id);
+  const path = findPath(root, id);
+  if (!path) return { items: root, focusId: visibleBefore[0] || null };
+  const list = getListByParentPath(root, path.slice(0, -1));
+  const pos = path[path.length - 1];
+  const node = list[pos];
+  const children = (node.children || []).map(cloneNode);
+  list.splice(pos, 1, ...children);
+  let focusId = visibleBefore[currentIndex - 1] || children[0]?.id || visibleBefore[currentIndex + 1] || null;
+  if (!root.length) {
+    const fresh = makeNode("");
+    root.push(fresh);
+    focusId = fresh.id;
+  }
+  return { items: root, focusId };
+}
+
+// Swap a block with its previous/next sibling (dir = -1 up, +1 down), moving
+// the whole subtree. Used for Alt+↑ / Alt+↓ keyboard reordering.
+function moveSibling(items, id, dir) {
+  const root = cloneItems(items);
+  const path = findPath(root, id);
+  if (!path) return root;
+  const list = getListByParentPath(root, path.slice(0, -1));
+  const i = path[path.length - 1];
+  const j = dir < 0 ? i - 1 : i + 1;
+  if (j < 0 || j >= list.length) return root;
+  const tmp = list[i];
+  list[i] = list[j];
+  list[j] = tmp;
+  return root;
 }
 
 function escapeRegExp(text) {
@@ -1217,6 +1352,20 @@ export default function App() {
     setTimeout(run, 30);
   }, []);
 
+  const focusNodeAtIndex = useCallback((id, index) => {
+    if (!id) return;
+    const run = () => {
+      const el = inputRefs.current.get(id);
+      if (!el) return;
+      el.focus({ preventScroll: false });
+      const pos = Math.max(0, Math.min(index ?? el.value.length, el.value.length));
+      try { el.setSelectionRange(pos, pos); } catch { /* noop */ }
+      keepActiveEditorComfortable(el);
+    };
+    requestAnimationFrame(run);
+    setTimeout(run, 30);
+  }, []);
+
   const appendLog = useCallback((level, message, detail = "") => {
     setSyncLog((prev) => [
       {
@@ -1568,7 +1717,11 @@ export default function App() {
 
   const handleKeyDown = useCallback((event, node) => {
     if (isImeEvent(event)) return;
+    const el = event.target;
     const currentText = drafts[node.id] ?? node.text ?? "";
+    const meta = event.ctrlKey || event.metaKey;
+    const flat = visibleRows.map(({ node: rowNode }) => rowNode.id);
+    const index = flat.indexOf(node.id);
 
     if (event.key === "Enter") {
       if (event.shiftKey) {
@@ -1576,32 +1729,21 @@ export default function App() {
         return;
       }
       event.preventDefault();
-      const next = makeNode("");
-      applyTextThen(node.id, currentText, (base) => insertSiblingAfter(base, node.id, next), next.id);
-      setDrafts((prev) => ({ ...prev, [next.id]: "" }));
+      // Split the block at the caret: text before the caret stays, text after
+      // moves into the new sibling block (standard outliner behaviour).
+      const caret = typeof el?.selectionStart === "number" ? el.selectionStart : currentText.length;
+      const before = currentText.slice(0, caret);
+      const after = currentText.slice(caret);
+      const next = makeNode(after);
+      applyTextThen(node.id, before, (base) => insertSiblingAfter(base, node.id, next));
+      setDrafts((prev) => ({ ...prev, [next.id]: after }));
+      focusNodeAtIndex(next.id, 0);
       return;
     }
 
     if (event.key === "Tab") {
       event.preventDefault();
       applyTextThen(node.id, currentText, (base) => (event.shiftKey ? outdentNode(base, node.id) : indentNode(base, node.id)), node.id);
-      return;
-    }
-
-    if (event.key === "Backspace" && currentText.length === 0 && !node.children?.length) {
-      event.preventDefault();
-      setItems((prev) => {
-        const withText = updateNodeText(prev, node.id, currentText);
-        const result = deleteNodeSafe(withText, node.id);
-        setTimeout(() => focusNode(result.focusId), 0);
-        return result.items;
-      });
-      setDrafts((prev) => {
-        const next = { ...prev };
-        delete next[node.id];
-        return next;
-      });
-      markChanged();
       return;
     }
 
@@ -1612,17 +1754,111 @@ export default function App() {
       return;
     }
 
-    if (event.key === "ArrowUp" || event.key === "ArrowDown") {
-      const flat = visibleRows.map(({ node: rowNode }) => rowNode.id);
-      const index = flat.indexOf(node.id);
-      const nextId = event.key === "ArrowUp" ? flat[index - 1] : flat[index + 1];
-      if (nextId) {
+    // Cmd/Ctrl + . : fold / unfold the current block (if it has children).
+    if (meta && event.key === ".") {
+      if (node.children?.length) {
+        event.preventDefault();
+        mutateItems((prev) => updateNodePatch(prev, node.id, { collapsed: !node.collapsed }), null);
+      }
+      return;
+    }
+
+    // Alt + ↑ / ↓ : move the whole block up/down among its siblings.
+    if (event.altKey && (event.key === "ArrowUp" || event.key === "ArrowDown")) {
+      event.preventDefault();
+      const dir = event.key === "ArrowUp" ? -1 : 1;
+      const caret = typeof el?.selectionStart === "number" ? el.selectionStart : currentText.length;
+      applyTextThen(node.id, currentText, (base) => moveSibling(base, node.id, dir));
+      focusNodeAtIndex(node.id, caret);
+      return;
+    }
+
+    if (event.key === "Backspace" && el && el.selectionStart === 0 && el.selectionEnd === 0) {
+      // Empty block: delete it. Children (if any) are preserved by promoting
+      // them into the block's position rather than being thrown away.
+      if (currentText.length === 0) {
+        event.preventDefault();
+        pushHistory();
+        setItems((prev) => {
+          const withText = updateNodeText(prev, node.id, "");
+          const result = node.children?.length
+            ? deleteNodeKeepChildren(withText, node.id)
+            : deleteNodeSafe(withText, node.id);
+          setTimeout(() => focusNode(result.focusId), 0);
+          return result.items;
+        });
+        setDrafts((prev) => {
+          const next = { ...prev };
+          delete next[node.id];
+          return next;
+        });
+        markChanged();
+        return;
+      }
+      // Non-empty block, caret at start, no children: merge into the previous
+      // visible block (append this block's text to it, place caret at the join).
+      if (!node.children?.length && index > 0) {
+        const prevId = flat[index - 1];
+        const prevEl = inputRefs.current.get(prevId);
+        if (prevId && prevEl) {
+          event.preventDefault();
+          const prevText = prevEl.value;
+          const joinPos = prevText.length;
+          pushHistory();
+          setItems((prev) => {
+            let root = updateNodeText(prev, prevId, prevText + currentText);
+            const removed = removeNodeById(root, node.id);
+            root = removed.items;
+            return root.length ? root : [makeNode("")];
+          });
+          setDrafts((prev) => {
+            const nextDrafts = { ...prev };
+            delete nextDrafts[node.id];
+            delete nextDrafts[prevId];
+            return nextDrafts;
+          });
+          markChanged();
+          setTimeout(() => focusNodeAtIndex(prevId, joinPos), 0);
+          return;
+        }
+      }
+      return;
+    }
+
+    // Caret-aware vertical / horizontal navigation across blocks.
+    if (!event.shiftKey && !event.altKey && !meta) {
+      if (event.key === "ArrowUp" || event.key === "ArrowDown") {
+        const nav = getCaretNav(el);
+        const goPrev = event.key === "ArrowUp";
+        const atEdge = goPrev ? (!nav || nav.isFirstLine) : (!nav || nav.isLastLine);
+        if (!atEdge) return; // move within this multi-line block
+        const targetId = goPrev ? flat[index - 1] : flat[index + 1];
+        if (!targetId) return;
         event.preventDefault();
         commitDraft(node.id);
-        focusNode(nextId);
+        const targetEl = inputRefs.current.get(targetId);
+        const x = nav ? nav.left : 0;
+        const idx = targetEl ? caretIndexForX(targetEl, goPrev ? "last" : "first", x) : undefined;
+        focusNodeAtIndex(targetId, idx);
+        return;
+      }
+      if (event.key === "ArrowLeft" && el && el.selectionStart === 0 && el.selectionEnd === 0) {
+        const prevId = flat[index - 1];
+        if (!prevId) return;
+        event.preventDefault();
+        commitDraft(node.id);
+        focusNode(prevId, "end");
+        return;
+      }
+      if (event.key === "ArrowRight" && el && el.selectionStart === el.value.length && el.selectionEnd === el.value.length) {
+        const nextId = flat[index + 1];
+        if (!nextId) return;
+        event.preventDefault();
+        commitDraft(node.id);
+        focusNode(nextId, "start");
       }
     }
-  }, [applyTextThen, commitDraft, drafts, focusNode, markChanged, visibleRows]);
+  }, [applyTextThen, commitDraft, drafts, focusNode, focusNodeAtIndex, markChanged, mutateItems, pushHistory, visibleRows]);
 
   const handleZoomTitleKeyDown = useCallback((event, node) => {
     if (isImeEvent(event)) return;
@@ -2609,10 +2845,16 @@ export default function App() {
 
             {settingsTab === "shortcuts" && (
               <div className="shortcut-list">
-                <div><kbd>Enter</kbd><span>次の項目</span></div>
+                <div><kbd>Enter</kbd><span>カーソル位置で分割して次の項目</span></div>
                 <div><kbd>Shift</kbd> + <kbd>Enter</kbd><span>ブロック内改行</span></div>
                 <div><kbd>Tab</kbd><span>インデント</span></div>
                 <div><kbd>Shift</kbd> + <kbd>Tab</kbd><span>アウトデント</span></div>
+                <div><kbd>Backspace</kbd><span>空ブロック削除（子は残す）/ 行頭で前と結合</span></div>
+                <div><kbd>↑</kbd> / <kbd>↓</kbd><span>ブロック間移動（複数行は行内優先・列を保持）</span></div>
+                <div><kbd>←</kbd> / <kbd>→</kbd><span>行頭/行末で隣のブロックへ</span></div>
+                <div><kbd>Alt</kbd> + <kbd>↑</kbd> / <kbd>↓</kbd><span>ブロックを上下に並べ替え</span></div>
+                <div><kbd>Ctrl</kbd> / <kbd>⌘</kbd> + <kbd>.</kbd><span>折りたたみ / 展開</span></div>
+                <div><kbd>Ctrl</kbd> / <kbd>⌘</kbd> + <kbd>Z</kbd><span>取り消し / やり直し（+Shift）</span></div>
                 <div><kbd>○</kbd><span>Zoom</span></div>
                 <div><kbd>☆</kbd><span>お気に入り</span></div>
                 <div><kbd>Esc</kbd><span>UI表示</span></div>
