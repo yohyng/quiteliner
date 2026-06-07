@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-const APP_VERSION = "5.7.6";
+const APP_VERSION = "5.7.7";
 const APP_VERSION_LABEL = `Quietliner v${APP_VERSION}`;
 const STORAGE_KEY = "quietliner.state.v4";
 const DEVICE_KEY = "quietliner.device.v1";
@@ -1903,13 +1903,21 @@ export default function App() {
   }, [mutateItems]);
 
   const toggleCollapse = useCallback((id) => {
+    // 折りたたむとき、フォーカスが子孫にあれば折りたたみ元へ戻す
+    const current = itemsRef.current || [];
+    const path = findPath(current, id);
+    const node = path ? getNodeByPath(current, path) : null;
+    const willCollapse = node ? !node.collapsed : false;
+    const focusIsInside = willCollapse && activeId && activeId !== id
+      && Boolean(findPath(node?.children || [], activeId));
     mutateItems((prev) => {
-      const path = findPath(prev, id);
-      if (!path) return prev;
-      const node = getNodeByPath(prev, path);
-      return updateNodePatch(prev, id, { collapsed: !node.collapsed });
-    }, id);
-  }, [mutateItems]);
+      const p = findPath(prev, id);
+      if (!p) return prev;
+      const n = getNodeByPath(prev, p);
+      return updateNodePatch(prev, id, { collapsed: !n.collapsed });
+    }, null);
+    if (focusIsInside) focusNode(id);
+  }, [activeId, focusNode, mutateItems]);
 
   const zoomInto = useCallback((id) => {
     if (!id || !findPath(getCurrentItems(), id)) return;

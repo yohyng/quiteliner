@@ -1,2 +1,2 @@
-Quietliner v5.7.6
-Build: Tab/Shift+Tabでカーソルが末尾に飛ぶ不具合を修正（カーソル位置を保持）
+Quietliner v5.7.7
+Build: 折りたたみボタン押下後にテキスト入力が効かなくなる不具合を修正
