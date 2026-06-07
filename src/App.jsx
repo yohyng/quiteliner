@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-const APP_VERSION = "5.7.7";
+const APP_VERSION = "5.7.8";
 const APP_VERSION_LABEL = `Quietliner v${APP_VERSION}`;
 const STORAGE_KEY = "quietliner.state.v4";
 const DEVICE_KEY = "quietliner.device.v1";
@@ -1050,6 +1050,7 @@ function OutlineRow({
   onBeginSelect,
   onEnterSelect,
   onTextPointerDown,
+  onShiftClick,
   onDragStartRow,
   onDragOverRow,
   onDropRow,
@@ -1091,7 +1092,7 @@ function OutlineRow({
           type="button"
           aria-label="Select this row"
           title="Drag to select rows"
-          onPointerDown={(event) => onBeginSelect(event, node.id)}
+          onPointerDown={(event) => { if (event.shiftKey) { event.preventDefault(); event.stopPropagation(); onShiftClick(node.id); } else { onBeginSelect(event, node.id); } }}
         >
           <span />
         </button>
@@ -1149,7 +1150,11 @@ function OutlineRow({
           onBlur={() => onBlur(node.id)}
           onChange={(event) => onChange(node.id, event.target.value)}
           onKeyDown={(event) => onKeyDown(event, node)}
-          onPointerDown={(event) => { if (event.button === 0) onTextPointerDown(node.id, event.clientX, event.clientY); }}
+          onPointerDown={(event) => {
+            if (event.button !== 0) return;
+            if (event.shiftKey) { event.preventDefault(); onShiftClick(node.id); return; }
+            onTextPointerDown(node.id, event.clientX, event.clientY);
+          }}
         />
       </div>
 
@@ -1573,6 +1578,8 @@ export default function App() {
       if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
       setSelectionAnchorId(anchor.id);
       setIsSelectingRows(true);
+      // useEffectより前にpointerupが来てもリセットできるよう即座にも登録
+      window.addEventListener("pointerup", () => setIsSelectingRows(false), { once: true });
       setActiveId(null);
       setSelectedIds(ids.slice(Math.min(start, end), Math.max(start, end) + 1));
     };
@@ -1631,6 +1638,7 @@ export default function App() {
   const handleFocus = useCallback((id, text) => {
     setActiveId(id);
     setSelectedIds([]);
+    setIsSelectingRows(false);
     setDrafts((prev) => (id in prev ? prev : { ...prev, [id]: text }));
   }, []);
 
@@ -1654,6 +1662,18 @@ export default function App() {
     setSelectedIds([id]);
     setIsSelectingRows(true);
   }, []);
+
+  const handleShiftClick = useCallback((id) => {
+    const anchor = activeId || selectionAnchorId || selectedIds[0];
+    if (!anchor || anchor === id) { setSelectedIds([id]); setActiveId(null); return; }
+    const ids = visibleIds;
+    const start = ids.indexOf(anchor);
+    const end = ids.indexOf(id);
+    if (start < 0 || end < 0) return;
+    setSelectionAnchorId(anchor);
+    setActiveId(null);
+    setSelectedIds(ids.slice(Math.min(start, end), Math.max(start, end) + 1));
+  }, [activeId, selectionAnchorId, selectedIds, visibleIds]);
 
   const enterRowSelection = useCallback((id) => {
     if (!isSelectingRows || !selectionAnchorId) return;
@@ -2570,6 +2590,7 @@ export default function App() {
                 onBeginSelect={beginRowSelection}
                 onEnterSelect={enterRowSelection}
                 onTextPointerDown={(id, startX, startY) => { textDragAnchorRef.current = { id, startX, startY }; }}
+                onShiftClick={handleShiftClick}
                 onDragStartRow={handleDragStartRow}
                 onDragOverRow={handleDragOverRow}
                 onDropRow={handleDropRow}
