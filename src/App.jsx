@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-const APP_VERSION = "5.7.8";
+const APP_VERSION = "5.7.9";
 const APP_VERSION_LABEL = `Quietliner v${APP_VERSION}`;
 const STORAGE_KEY = "quietliner.state.v4";
 const DEVICE_KEY = "quietliner.device.v1";
@@ -717,6 +717,21 @@ function newestTimestamp(a, b) {
   return left >= right ? a : b;
 }
 
+// ツリー全体をidで走査し、2回目以降に現れた同一idのノードを取り除く。
+// インデント/アウトデントの差分マージで同じidが別階層に複製されると、
+// Reactのkey重複でブロックが2倍/ミラー表示され操作不能になるのを防ぐ。
+function dedupeTree(items, seen = new Set()) {
+  const out = [];
+  for (const node of items || []) {
+    if (!node || !node.id) continue;
+    if (seen.has(node.id)) continue;
+    seen.add(node.id);
+    const children = node.children?.length ? dedupeTree(node.children, seen) : [];
+    out.push({ ...node, children });
+  }
+  return out;
+}
+
 function mergeNodeLists(localList = [], remoteList = []) {
   const result = [];
   const used = new Set();
@@ -778,7 +793,7 @@ function mergeNode(localNode, remoteNode) {
 function mergePayloads(localPayload, remotePayload) {
   const localItems = Array.isArray(localPayload?.items) ? localPayload.items : [];
   const remoteItems = Array.isArray(remotePayload?.items) ? remotePayload.items : [];
-  const mergedItems = mergeNodeLists(localItems, remoteItems);
+  const mergedItems = dedupeTree(mergeNodeLists(localItems, remoteItems));
   const mergedSettings = {
     ...(remotePayload?.settings || {}),
     ...(localPayload?.settings || {}),
@@ -2132,7 +2147,9 @@ export default function App() {
 
   function applyRemotePayload(payload, result = {}) {
     if (!payload || !Array.isArray(payload.items)) throw new Error("リモートの payload に items がありません");
-    setItems(payload.items);
+    // 既存の壊れたデータ（id重複）も読み込み時に必ず正規化する
+    const safeItems = dedupeTree(payload.items);
+    setItems(safeItems.length ? safeItems : [makeNode("")]);
     setVersion(Number(payload.version || result.remoteVersion || version + 1));
     setUpdatedAt(payload.updatedAt || result.remoteUpdatedAt || nowIso());
     if (payload.settings) setSettings((prev) => ({ ...prev, ...payload.settings }));
@@ -2140,7 +2157,7 @@ export default function App() {
     // カーソル位置が失われて「タイピングできない」状態になるのを防ぐ）。
     setDrafts((prev) => (activeId && activeId in prev ? { [activeId]: prev[activeId] } : {}));
     // ズーム中のノードが新しいツリーにまだ存在するなら、ズームは維持する。
-    setZoomRootId((prev) => (prev && findPath(payload.items, prev) ? prev : null));
+    setZoomRootId((prev) => (prev && findPath(safeItems, prev) ? prev : null));
     setSelectedIds([]);
     setDirty(false);
   }

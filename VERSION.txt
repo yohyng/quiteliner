@@ -1,2 +1,2 @@
-Quietliner v5.7.8
-Build: ブロック固まりバグ修正 + Shift+Clickでブロックまたぎ範囲選択
+Quietliner v5.7.9
+Build: 同期マージでブロックがid重複し2倍/ミラー表示され操作不能になる不具合を修正
