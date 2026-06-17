@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-const APP_VERSION = "5.8.1";
+const APP_VERSION = "5.8.2";
 const APP_VERSION_LABEL = `Quietliner v${APP_VERSION}`;
 const STORAGE_KEY = "quietliner.state.v4";
 const DEVICE_KEY = "quietliner.device.v1";
@@ -1139,15 +1139,15 @@ function OutlineRow({
           <span />
         </button>
         <button
-          className="collapse-button"
+          className={`collapse-button${hasChildren && !node.collapsed ? " is-open" : ""}`}
           type="button"
           aria-label={node.collapsed ? "Expand" : "Collapse"}
-          title={hasChildren ? (node.collapsed ? "Expand" : "Collapse") : "No children"}
+          title={hasChildren ? (node.collapsed ? "展開" : "折りたたむ") : ""}
           disabled={!hasChildren}
           onMouseDown={(event) => event.preventDefault()}
           onClick={() => onToggleCollapse(node.id)}
         >
-          {hasChildren ? (node.collapsed ? "›" : "⌄") : ""}
+          {hasChildren ? (node.collapsed ? "▶" : "▼") : ""}
         </button>
       </div>
 

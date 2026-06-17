@@ -1,2 +1,2 @@
-Quietliner v5.8.1
-Build: WorkFlowy互換強化 — Cmd+Enter完了、Deleteキー前向き削除、Shift+↑↓範囲選択
+Quietliner v5.8.2
+Build: WorkFlowy風トグル矢印UI — ホバーで表示、▶/▼アイコン
