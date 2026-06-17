@@ -1,2 +1,2 @@
-Quietliner v5.8.0
-Build: 文字入力中の予測変換バーがガタガタする不具合を修正
+Quietliner v5.8.1
+Build: WorkFlowy互換強化 — Cmd+Enter完了、Deleteキー前向き削除、Shift+↑↓範囲選択

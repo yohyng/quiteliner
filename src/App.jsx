@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-const APP_VERSION = "5.8.0";
+const APP_VERSION = "5.8.1";
 const APP_VERSION_LABEL = `Quietliner v${APP_VERSION}`;
 const STORAGE_KEY = "quietliner.state.v4";
 const DEVICE_KEY = "quietliner.device.v1";
@@ -293,6 +293,7 @@ function makeNode(text = "") {
     text,
     favorite: false,
     collapsed: false,
+    completed: false,
     children: [],
     createdAt: time,
     updatedAt: time,
@@ -670,6 +671,7 @@ function ensureNodeShape(input, fallbackText = "") {
     text: textValue,
     favorite: Boolean(input?.favorite || input?.starred),
     collapsed: Boolean(input?.collapsed),
+    completed: Boolean(input?.completed),
     children: childrenSource.map((child) => ensureNodeShape(child)),
     createdAt: input?.createdAt || time,
     updatedAt: input?.updatedAt || time,
@@ -1097,6 +1099,7 @@ function OutlineRow({
       data-node-id={node.id}
       data-active={isActive ? "true" : "false"}
       data-selected={selected ? "true" : "false"}
+      data-completed={node.completed ? "true" : "false"}
       data-drag-over={dragOver || ""}
       style={{ "--depth": depth }}
       onPointerEnter={() => onEnterSelect(node.id)}
@@ -1763,6 +1766,13 @@ export default function App() {
     const flat = visibleRows.map(({ node: rowNode }) => rowNode.id);
     const index = flat.indexOf(node.id);
 
+    // Cmd/Ctrl+Enter: 完了状態トグル（WorkFlowy互換）
+    if (meta && event.key === "Enter") {
+      event.preventDefault();
+      mutateItems((prev) => updateNodePatch(prev, node.id, { completed: !node.completed }), node.id);
+      return;
+    }
+
     if (event.key === "Enter") {
       if (event.shiftKey) {
         // Shift+Enter is an in-block line break. Let the textarea handle it naturally.
@@ -1865,6 +1875,56 @@ export default function App() {
       return;
     }
 
+    // Delete（前向き削除）: 行末で次のノードとマージ（Backspaceの逆）
+    if (event.key === "Delete" && el && el.selectionStart === el.value.length && el.selectionEnd === el.value.length) {
+      const nextId = flat[index + 1];
+      const nextNode = visibleRows[index + 1]?.node;
+      if (nextId && nextNode && !nextNode.children?.length) {
+        event.preventDefault();
+        const nextEl = inputRefs.current.get(nextId);
+        const nextText = nextEl?.value ?? nextNode.text ?? "";
+        const joinPos = currentText.length;
+        pushHistory();
+        setItems((prev) => {
+          let root = updateNodeText(prev, node.id, currentText + nextText);
+          const removed = removeNodeById(root, nextId);
+          root = removed.items;
+          return root.length ? root : [makeNode("")];
+        });
+        setDrafts((prev) => {
+          const nextDrafts = { ...prev };
+          delete nextDrafts[nextId];
+          delete nextDrafts[node.id];
+          return nextDrafts;
+        });
+        markChanged();
+        setTimeout(() => focusNodeAtIndex(node.id, joinPos), 0);
+        return;
+      }
+    }
+
+    // Shift+↑/↓: ブロック端でブロック選択を拡張（WorkFlowy互換）
+    if (event.shiftKey && !event.altKey && !meta && (event.key === "ArrowUp" || event.key === "ArrowDown")) {
+      const nav = getCaretNav(el);
+      const goPrev = event.key === "ArrowUp";
+      const atEdge = goPrev ? (!nav || nav.isFirstLine) : (!nav || nav.isLastLine);
+      if (atEdge) {
+        const targetId = goPrev ? flat[index - 1] : flat[index + 1];
+        if (targetId) {
+          event.preventDefault();
+          const anchor = selectionAnchorId || node.id;
+          const anchorIdx = flat.indexOf(anchor);
+          const targetIdx = flat.indexOf(targetId);
+          if (anchorIdx >= 0 && targetIdx >= 0) {
+            setSelectionAnchorId(anchor);
+            setSelectedIds(flat.slice(Math.min(anchorIdx, targetIdx), Math.max(anchorIdx, targetIdx) + 1));
+            setActiveId(null);
+          }
+          return;
+        }
+      }
+    }
+
     // Caret-aware vertical / horizontal navigation across blocks.
     if (!event.shiftKey && !event.altKey && !meta) {
       if (event.key === "ArrowUp" || event.key === "ArrowDown") {
@@ -1898,7 +1958,7 @@ export default function App() {
         focusNode(nextId, "start");
       }
     }
-  }, [applyTextThen, commitDraft, drafts, focusNode, focusNodeAtIndex, markChanged, mutateItems, pushHistory, visibleRows]);
+  }, [applyTextThen, commitDraft, drafts, focusNode, focusNodeAtIndex, markChanged, mutateItems, pushHistory, selectionAnchorId, setSelectedIds, setSelectionAnchorId, setActiveId, visibleRows]);
 
   const handleZoomTitleKeyDown = useCallback((event, node) => {
     if (isImeEvent(event)) return;

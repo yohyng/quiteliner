@@ -792,6 +792,18 @@ button {
   box-shadow: none;
 }
 
+/* Completed items: strikethrough + muted (WorkFlowy-style Cmd+Enter) */
+.outline-row[data-completed="true"] .outline-input {
+  text-decoration: line-through;
+  opacity: 0.45;
+}
+.outline-row[data-completed="true"] .outline-input::placeholder {
+  text-decoration: none;
+}
+.outline-row[data-completed="true"] .zoom-dot-button span {
+  background: color-mix(in srgb, var(--app-text) 30%, transparent);
+}
+
 .is-selecting {
   cursor: ns-resize;
 }
