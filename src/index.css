@@ -990,7 +990,7 @@ button {
   border-radius: 8px;
   box-shadow: 0 4px 18px color-mix(in srgb, var(--app-text) 14%, transparent);
   padding: 4px;
-  min-width: 148px;
+  min-width: 210px;
   display: flex;
   flex-direction: column;
   gap: 1px;
@@ -1518,6 +1518,109 @@ kbd {
       transparent 20px
     );
   }
+}
+
+/* Heading level styles */
+.outline-row[data-heading="1"] .outline-input,
+.outline-row[data-heading="1"] .highlight-mirror {
+  font-size: calc(var(--editor-font-size, 18px) * 1.55);
+  font-weight: 650;
+  line-height: 1.28;
+  padding-top: 5px;
+  padding-bottom: 5px;
+}
+
+.outline-row[data-heading="2"] .outline-input,
+.outline-row[data-heading="2"] .highlight-mirror {
+  font-size: calc(var(--editor-font-size, 18px) * 1.28);
+  font-weight: 610;
+  line-height: 1.32;
+  padding-top: 3px;
+  padding-bottom: 3px;
+}
+
+.outline-row[data-heading="3"] .outline-input,
+.outline-row[data-heading="3"] .highlight-mirror {
+  font-size: calc(var(--editor-font-size, 18px) * 1.1);
+  font-weight: 560;
+}
+
+/* Node text color */
+.outline-row[data-text-color="true"] .outline-input {
+  color: var(--node-text-color);
+  caret-color: var(--node-text-color);
+}
+
+/* Node background color */
+.outline-row[data-bg-color="true"] {
+  background: var(--node-bg-color) !important;
+  border-radius: 10px;
+}
+
+/* Heading/color picker in row-menu */
+.row-menu-section-label {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--app-text) 40%, transparent);
+  padding: 6px 10px 2px;
+}
+
+.row-menu-row {
+  display: flex;
+  gap: 4px;
+  padding: 3px 8px 6px;
+  flex-wrap: wrap;
+}
+
+.heading-chip {
+  border: 1px solid color-mix(in srgb, var(--app-text) 16%, transparent);
+  background: transparent;
+  border-radius: 6px;
+  padding: 3px 9px;
+  font-size: 12px;
+  font-weight: 560;
+  cursor: pointer;
+  color: var(--app-text);
+  transition: background 100ms ease, border-color 100ms ease;
+}
+
+.heading-chip:hover {
+  background: color-mix(in srgb, var(--app-text) 8%, transparent);
+  border-color: color-mix(in srgb, var(--app-text) 28%, transparent);
+}
+
+.heading-chip.active {
+  background: color-mix(in srgb, var(--app-text) 14%, transparent);
+  border-color: color-mix(in srgb, var(--app-text) 36%, transparent);
+}
+
+.color-row {
+  gap: 5px;
+}
+
+.color-chip {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 1.5px solid color-mix(in srgb, var(--app-text) 16%, transparent);
+  background: color-mix(in srgb, var(--app-text) 7%, transparent);
+  cursor: pointer;
+  font-size: 10px;
+  display: grid;
+  place-items: center;
+  color: color-mix(in srgb, var(--app-text) 52%, transparent);
+  transition: transform 100ms ease, box-shadow 100ms ease;
+  padding: 0;
+}
+
+.color-chip:hover {
+  transform: scale(1.18);
+}
+
+.color-chip.active {
+  box-shadow: 0 0 0 2px var(--app-bg), 0 0 0 4px color-mix(in srgb, var(--app-text) 55%, transparent);
 }
 
 /* Tag section in sidebar */

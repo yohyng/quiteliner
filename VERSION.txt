@@ -1,2 +1,2 @@
-Quietliner v5.8.3
-Build: 縦インデントガイド線 + ハッシュタグ検索 + ⋯メニュー + bullet drag + char count
+Quietliner v5.8.4
+Build: 見出し・文字色・背景色 + インデントガイド + ハッシュタグ + ⋯メニュー

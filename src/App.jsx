@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-const APP_VERSION = "5.8.3";
+const APP_VERSION = "5.8.4";
 const APP_VERSION_LABEL = `Quietliner v${APP_VERSION}`;
 const STORAGE_KEY = "quietliner.state.v4";
 const DEVICE_KEY = "quietliner.device.v1";
@@ -206,6 +206,28 @@ const BACKGROUND_NOISE_OPTIONS = {
   mixed: { label: "Mixed Grain" },
 };
 
+const TEXT_COLOR_PRESETS = [
+  { label: "デフォルト", value: null },
+  { label: "赤", value: "#e03535" },
+  { label: "橙", value: "#d97322" },
+  { label: "黄", value: "#b88b0f" },
+  { label: "緑", value: "#1a8c40" },
+  { label: "青", value: "#2355a8" },
+  { label: "紫", value: "#7b3fbf" },
+  { label: "灰", value: "#767676" },
+];
+
+const BG_COLOR_PRESETS = [
+  { label: "なし", value: null },
+  { label: "赤", value: "rgba(255,80,80,0.10)" },
+  { label: "橙", value: "rgba(255,160,50,0.12)" },
+  { label: "黄", value: "rgba(255,220,50,0.13)" },
+  { label: "緑", value: "rgba(50,200,100,0.10)" },
+  { label: "青", value: "rgba(50,130,255,0.10)" },
+  { label: "紫", value: "rgba(180,80,255,0.10)" },
+  { label: "灰", value: "rgba(120,120,120,0.09)" },
+];
+
 const DEFAULT_SETTINGS = {
   theme: "light",
   font: "gothic",
@@ -295,6 +317,9 @@ function makeNode(text = "") {
     favorite: false,
     collapsed: false,
     completed: false,
+    headingLevel: null,
+    textColor: null,
+    bgColor: null,
     children: [],
     createdAt: time,
     updatedAt: time,
@@ -690,6 +715,9 @@ function ensureNodeShape(input, fallbackText = "") {
     favorite: Boolean(input?.favorite || input?.starred),
     collapsed: Boolean(input?.collapsed),
     completed: Boolean(input?.completed),
+    headingLevel: input?.headingLevel ? Number(input.headingLevel) : null,
+    textColor: input?.textColor || null,
+    bgColor: input?.bgColor || null,
     children: childrenSource.map((child) => ensureNodeShape(child)),
     createdAt: input?.createdAt || time,
     updatedAt: input?.updatedAt || time,
@@ -1083,6 +1111,7 @@ function OutlineRow({
   onToggleCollapse,
   onToggleComplete,
   onDeleteNode,
+  onPatchNode,
   onZoom,
   onBeginSelect,
   onEnterSelect,
@@ -1130,7 +1159,14 @@ function OutlineRow({
       data-selected={selected ? "true" : "false"}
       data-completed={node.completed ? "true" : "false"}
       data-drag-over={dragOver || ""}
-      style={{ "--depth": depth }}
+      data-heading={node.headingLevel || ""}
+      data-text-color={node.textColor ? "true" : "false"}
+      data-bg-color={node.bgColor ? "true" : "false"}
+      style={{
+        "--depth": depth,
+        ...(node.textColor ? { "--node-text-color": node.textColor } : {}),
+        ...(node.bgColor ? { "--node-bg-color": node.bgColor } : {}),
+      }}
       onPointerEnter={() => onEnterSelect(node.id)}
       onDragOver={(event) => onDragOverRow(event, node.id)}
       onDrop={(event) => onDropRow(event, node.id)}
@@ -1228,6 +1264,57 @@ function OutlineRow({
                 {node.collapsed ? "▶ 展開" : "▼ 折りたたむ"}
               </button>
             )}
+
+            <div className="row-menu-divider" />
+            <div className="row-menu-section-label">見出し</div>
+            <div className="row-menu-row">
+              {[null, 1, 2, 3].map((level) => (
+                <button
+                  key={level ?? "body"}
+                  className={`heading-chip${node.headingLevel === level ? " active" : ""}`}
+                  type="button"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => onPatchNode(node.id, { headingLevel: level })}
+                >
+                  {level === null ? "本文" : `H${level}`}
+                </button>
+              ))}
+            </div>
+
+            <div className="row-menu-section-label">文字色</div>
+            <div className="row-menu-row color-row">
+              {TEXT_COLOR_PRESETS.map(({ label, value }) => (
+                <button
+                  key={label}
+                  className={`color-chip${node.textColor === value ? " active" : ""}`}
+                  type="button"
+                  title={label}
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => onPatchNode(node.id, { textColor: value })}
+                  style={value ? { background: value } : undefined}
+                >
+                  {!value && "✕"}
+                </button>
+              ))}
+            </div>
+
+            <div className="row-menu-section-label">背景色</div>
+            <div className="row-menu-row color-row">
+              {BG_COLOR_PRESETS.map(({ label, value }) => (
+                <button
+                  key={label}
+                  className={`color-chip${node.bgColor === value ? " active" : ""}`}
+                  type="button"
+                  title={label}
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => onPatchNode(node.id, { bgColor: value })}
+                  style={value ? { background: value, border: "1.5px solid rgba(0,0,0,0.15)" } : undefined}
+                >
+                  {!value && "✕"}
+                </button>
+              ))}
+            </div>
+
             <div className="row-menu-divider" />
             <button type="button" className="row-menu-danger" onMouseDown={(e) => e.preventDefault()} onClick={() => { setMenuOpen(false); onDeleteNode(node.id); }}>
               🗑 削除
@@ -2047,6 +2134,10 @@ export default function App() {
     }
   }, [applyTextThen, commitDraft, drafts, focusNode]);
 
+  const handlePatchNode = useCallback((id, patch) => {
+    mutateItems((prev) => updateNodePatch(prev, id, patch), null);
+  }, [mutateItems]);
+
   const toggleFavoriteTag = useCallback((tag) => {
     setSettings((prev) => {
       const tags = prev.favoriteTags || [];
@@ -2785,6 +2876,7 @@ export default function App() {
                 onToggleCollapse={toggleCollapse}
                 onToggleComplete={toggleComplete}
                 onDeleteNode={deleteNode}
+                onPatchNode={handlePatchNode}
                 onZoom={zoomInto}
                 onBeginSelect={beginRowSelection}
                 onEnterSelect={enterRowSelection}
