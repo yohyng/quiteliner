@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-const APP_VERSION = "5.8.5";
+const APP_VERSION = "5.8.6";
 const APP_VERSION_LABEL = `Quietliner v${APP_VERSION}`;
 const STORAGE_KEY = "quietliner.state.v4";
 const DEVICE_KEY = "quietliner.device.v1";
@@ -531,6 +531,13 @@ function collectAllTags(items) {
   };
   walk(items);
   return [...tags].sort();
+}
+
+function getHashtagAtCursor(text, cursorPos) {
+  const before = text.slice(0, cursorPos);
+  const m = before.match(/#([^\s#.,!?。、！？]*)$/);
+  if (!m) return null;
+  return { start: m.index, query: m[1].toLowerCase() };
 }
 
 function applyDraftsToItems(items, drafts) {
@@ -1137,20 +1144,75 @@ function OutlineRow({
   onDropRow,
   onDragEndRow,
   dragOver,
+  allTags,
 }) {
   const textareaRef = useRef(null);
   const menuRef = useRef(null);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [tagSuggest, setTagSuggest] = useState({ items: [], selIdx: 0 });
   const value = drafts[node.id] ?? node.text ?? "";
   const hasQuery = query.trim().length > 0;
   const isActive = activeId === node.id;
   const hasTags = extractTags(value).length > 0;
-  // Mirror for search highlights (always) or tag styling (blurred only,
-  // to avoid italic char-width shift misaligning the caret while typing)
-  const showMirror = hasQuery || (hasTags && !isActive);
+  const showMirror = hasQuery || hasTags;
   const chars = countChars(node, drafts);
   const hasChildren = Boolean(node.children?.length);
   const hasBody = hasStoredBody(node);
+
+  const applyTagSuggestion = (tag) => {
+    const el = textareaRef.current;
+    if (!el) return;
+    const currentValue = drafts[node.id] ?? node.text ?? "";
+    const cursorPos = el.selectionStart;
+    const ht = getHashtagAtCursor(currentValue, cursorPos);
+    if (!ht) return;
+    const newValue = `${currentValue.slice(0, ht.start)}#${tag} ${currentValue.slice(cursorPos)}`;
+    const newCursor = ht.start + tag.length + 2;
+    onChange(node.id, newValue);
+    setTagSuggest({ items: [], selIdx: 0 });
+    requestAnimationFrame(() => {
+      if (textareaRef.current) textareaRef.current.setSelectionRange(newCursor, newCursor);
+    });
+  };
+
+  const handleLocalChange = (event) => {
+    const newVal = event.target.value;
+    const cursorPos = event.target.selectionStart;
+    onChange(node.id, newVal);
+    const ht = getHashtagAtCursor(newVal, cursorPos);
+    if (ht !== null) {
+      const filtered = (allTags || []).filter((t) => t.startsWith(ht.query));
+      setTagSuggest({ items: filtered.slice(0, 8), selIdx: 0 });
+    } else {
+      setTagSuggest({ items: [], selIdx: 0 });
+    }
+  };
+
+  const handleLocalKeyDown = (event) => {
+    if (isImeEvent(event)) { onKeyDown(event, node); return; }
+    if (tagSuggest.items.length > 0) {
+      if (event.key === "ArrowDown") {
+        event.preventDefault();
+        setTagSuggest((prev) => ({ ...prev, selIdx: Math.min(prev.selIdx + 1, prev.items.length - 1) }));
+        return;
+      }
+      if (event.key === "ArrowUp") {
+        event.preventDefault();
+        setTagSuggest((prev) => ({ ...prev, selIdx: Math.max(prev.selIdx - 1, 0) }));
+        return;
+      }
+      if (event.key === "Tab" || (event.key === "Enter" && !event.shiftKey)) {
+        event.preventDefault();
+        applyTagSuggestion(tagSuggest.items[tagSuggest.selIdx]);
+        return;
+      }
+      if (event.key === "Escape") {
+        setTagSuggest({ items: [], selIdx: 0 });
+        return;
+      }
+    }
+    onKeyDown(event, node);
+  };
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -1227,7 +1289,7 @@ function OutlineRow({
         </button>
       </div>
 
-      <div className={`text-shell ${showMirror ? "has-query" : ""}`}>
+      <div className={`text-shell${hasQuery ? " has-query" : ""}${hasTags && !hasQuery ? " has-tags" : ""}`}>
         {showMirror && (
           <div className="highlight-mirror" aria-hidden="true">
             {hasQuery ? <HighlightedText text={value} query={query} /> : <TaggedText text={value} />}
@@ -1244,15 +1306,30 @@ function OutlineRow({
           placeholder="Write something..."
           spellCheck={false}
           onFocus={() => onFocus(node.id, node.text ?? "")}
-          onBlur={() => onBlur(node.id)}
-          onChange={(event) => onChange(node.id, event.target.value)}
-          onKeyDown={(event) => onKeyDown(event, node)}
+          onBlur={() => { setTagSuggest({ items: [], selIdx: 0 }); onBlur(node.id); }}
+          onChange={handleLocalChange}
+          onKeyDown={handleLocalKeyDown}
           onPointerDown={(event) => {
             if (event.button !== 0) return;
             if (event.shiftKey) { event.preventDefault(); onShiftClick(node.id); return; }
             onTextPointerDown(node.id, event.clientX, event.clientY);
           }}
         />
+        {tagSuggest.items.length > 0 && (
+          <div className="tag-suggest-box" role="listbox">
+            {tagSuggest.items.map((tag, i) => (
+              <div
+                key={tag}
+                className="tag-suggest-item"
+                data-selected={i === tagSuggest.selIdx ? "true" : "false"}
+                role="option"
+                onMouseDown={(e) => { e.preventDefault(); applyTagSuggestion(tag); }}
+              >
+                #{tag}
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       <div className="row-actions" ref={menuRef}>
@@ -2906,6 +2983,7 @@ export default function App() {
                 onDropRow={handleDropRow}
                 onDragEndRow={handleDragEndRow}
                 dragOver={dragOverState?.id === node.id ? dragOverState.mode : ""}
+                allTags={allTags}
               />
             ))}
           </div>

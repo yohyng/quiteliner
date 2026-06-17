@@ -1081,6 +1081,20 @@ button {
   color: transparent;
 }
 
+/* has-tags: always show mirror for tag styling; hide textarea text to avoid double render */
+.text-shell.has-tags .outline-input {
+  color: transparent;
+  caret-color: var(--app-text);
+}
+
+/* When the block is active (focused), hide mirror and restore textarea text color */
+.outline-row[data-active="true"] .text-shell.has-tags:not(.has-query) .highlight-mirror {
+  display: none;
+}
+.outline-row[data-active="true"] .text-shell.has-tags:not(.has-query) .outline-input {
+  color: var(--app-text);
+}
+
 .outline-input::placeholder {
   color: color-mix(in srgb, var(--app-text) 24%, transparent);
 }
@@ -1627,6 +1641,42 @@ kbd {
 
 .color-chip.active {
   box-shadow: 0 0 0 2px var(--app-bg), 0 0 0 4px color-mix(in srgb, var(--app-text) 55%, transparent);
+}
+
+/* Tag autocomplete dropdown */
+.tag-suggest-box {
+  position: absolute;
+  top: calc(100% + 2px);
+  left: 0;
+  z-index: 300;
+  background: var(--app-bg);
+  border: 1px solid color-mix(in srgb, var(--app-text) 14%, transparent);
+  border-radius: 10px;
+  box-shadow: 0 4px 16px color-mix(in srgb, var(--app-text) 12%, transparent);
+  min-width: 140px;
+  max-width: 260px;
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.tag-suggest-item {
+  padding: 5px 10px;
+  border-radius: 6px;
+  font-size: 13px;
+  cursor: pointer;
+  font-style: italic;
+  color: color-mix(in srgb, var(--app-text) 65%, transparent);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tag-suggest-item:hover,
+.tag-suggest-item[data-selected="true"] {
+  background: color-mix(in srgb, var(--app-text) 8%, transparent);
+  color: var(--app-text);
 }
 
 /* Tag section in sidebar */
