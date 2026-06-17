@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-const APP_VERSION = "5.7.9";
+const APP_VERSION = "5.8.0";
 const APP_VERSION_LABEL = `Quietliner v${APP_VERSION}`;
 const STORAGE_KEY = "quietliner.state.v4";
 const DEVICE_KEY = "quietliner.device.v1";
@@ -1083,9 +1083,12 @@ function OutlineRow({
   useEffect(() => {
     const el = textareaRef.current;
     if (!el) return;
+    const prev = el.clientHeight;
     el.style.height = "auto";
-    el.style.height = `${Math.max(28, el.scrollHeight)}px`;
-    if (document.activeElement === el) keepActiveEditorComfortable(el);
+    const next = Math.max(28, el.scrollHeight);
+    el.style.height = `${next}px`;
+    // 高さが変わったときだけスクロール調整（毎キーストロークのIMEバーブレを防ぐ）
+    if (prev !== next && document.activeElement === el) keepActiveEditorComfortable(el);
   }, [value, activeId]);
 
   return (
@@ -1213,9 +1216,11 @@ function ZoomTitleEditor({
   useEffect(() => {
     const el = textareaRef.current;
     if (!el) return;
+    const prev = el.clientHeight;
     el.style.height = "auto";
-    el.style.height = `${Math.max(40, el.scrollHeight)}px`;
-    if (document.activeElement === el) keepActiveEditorComfortable(el);
+    const next = Math.max(40, el.scrollHeight);
+    el.style.height = `${next}px`;
+    if (prev !== next && document.activeElement === el) keepActiveEditorComfortable(el);
   }, [value, activeId]);
 
   return (
