@@ -769,6 +769,25 @@ button {
   min-height: 34px;
   border-radius: 12px;
   transition: background 120ms ease;
+  position: relative;
+}
+
+/* WorkFlowy-style indent guide lines — one 1px line per ancestor depth level */
+.outline-row::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 40px;
+  width: max(0px, calc(var(--depth, 0) * 28px - 27px));
+  background: repeating-linear-gradient(
+    to right,
+    color-mix(in srgb, var(--app-text) 7%, transparent) 0px,
+    color-mix(in srgb, var(--app-text) 7%, transparent) 1px,
+    transparent 1px,
+    transparent 28px
+  );
+  pointer-events: none;
 }
 
 .outline-row[data-active="true"] {
@@ -922,14 +941,89 @@ button {
   align-items: flex-start;
   gap: 3px;
   padding: 1px 2px 0 8px;
-  opacity: 0;
+  opacity: 0.38;
   transition: opacity 120ms ease;
+  position: relative;
 }
 
 .outline-row:hover .row-actions,
 .zoom-title-editor:hover .zoom-title-actions,
-.favorite-button:focus-visible {
-  opacity: 0.88;
+.more-button:focus-visible {
+  opacity: 1;
+}
+
+/* ⋯ボタンは常時は非表示、文字数は常時薄く見える */
+.more-button {
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+.outline-row:hover .more-button {
+  opacity: 1;
+}
+
+/* ⋯ ボタン */
+.more-button {
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  padding: 0 2px;
+  height: 28px;
+  font-size: 14px;
+  letter-spacing: 1px;
+  color: color-mix(in srgb, var(--app-text) 46%, transparent);
+  line-height: 1;
+  display: grid;
+  place-items: center;
+}
+.more-button:hover {
+  color: var(--app-text);
+}
+
+/* アクションメニュー */
+.row-menu {
+  position: absolute;
+  right: 0;
+  top: 30px;
+  z-index: 200;
+  background: var(--app-bg);
+  border: 1px solid color-mix(in srgb, var(--app-text) 14%, transparent);
+  border-radius: 8px;
+  box-shadow: 0 4px 18px color-mix(in srgb, var(--app-text) 14%, transparent);
+  padding: 4px;
+  min-width: 148px;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.row-menu button {
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+  padding: 6px 10px;
+  border-radius: 5px;
+  font-size: 13px;
+  color: var(--app-text);
+  white-space: nowrap;
+}
+.row-menu button:hover {
+  background: color-mix(in srgb, var(--app-text) 8%, transparent);
+}
+.row-menu-danger {
+  color: #c94040 !important;
+}
+.row-menu-divider {
+  height: 1px;
+  background: color-mix(in srgb, var(--app-text) 10%, transparent);
+  margin: 2px 4px;
+}
+
+/* zoom-dot ドラッグ時のカーソル */
+.zoom-dot-button[draggable="true"] {
+  cursor: grab;
+}
+.zoom-dot-button[draggable="true"]:active {
+  cursor: grabbing;
 }
 
 .favorite-button {
@@ -1009,7 +1103,14 @@ button {
 }
 
 .char-count {
-  display: none;
+  font-size: 10.5px;
+  line-height: 28px;
+  color: color-mix(in srgb, var(--app-text) 28%, transparent);
+  padding: 0 2px;
+  min-width: 16px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  user-select: none;
 }
 
 .settings-backdrop {
@@ -1351,28 +1452,6 @@ kbd {
   gap: 1px;
 }
 
-.drag-grip {
-  width: 14px;
-  height: 28px;
-  border: 0;
-  padding: 0;
-  display: grid;
-  place-items: center;
-  background: transparent;
-  color: color-mix(in srgb, var(--app-text) 26%, transparent);
-  cursor: grab;
-  opacity: 0;
-  transition: opacity 120ms ease, color 120ms ease;
-}
-
-.drag-grip:active {
-  cursor: grabbing;
-}
-
-.outline-row:hover .drag-grip,
-.drag-grip:focus-visible {
-  opacity: 0.82;
-}
 
 .zoom-dot-button.has-body span {
   background: transparent;
@@ -1428,8 +1507,68 @@ kbd {
   .outline-row {
     grid-template-columns: calc(var(--depth) * 20px + 72px) minmax(0, 1fr) auto;
   }
+  .outline-row::before {
+    left: 30px;
+    width: max(0px, calc(var(--depth, 0) * 20px - 19px));
+    background: repeating-linear-gradient(
+      to right,
+      color-mix(in srgb, var(--app-text) 7%, transparent) 0px,
+      color-mix(in srgb, var(--app-text) 7%, transparent) 1px,
+      transparent 1px,
+      transparent 20px
+    );
+  }
 }
 
+/* Tag section in sidebar */
+.tag-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  border-radius: 12px;
+  padding: 2px 4px;
+  transition: background 120ms ease;
+}
+
+.tag-row:hover {
+  background: color-mix(in srgb, var(--app-text) 5%, transparent);
+}
+
+.tag-name-btn {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  padding: 5px 6px;
+  background: transparent;
+  cursor: pointer;
+  font-size: 13px;
+  text-align: left;
+  color: color-mix(in srgb, var(--app-text) 68%, transparent);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  border-radius: 8px;
+}
+
+.tag-name-btn:hover {
+  color: var(--app-text);
+}
+
+.tag-star-btn {
+  flex-shrink: 0;
+  border: 0;
+  padding: 4px 6px;
+  background: transparent;
+  cursor: pointer;
+  font-size: 13px;
+  color: color-mix(in srgb, var(--app-text) 34%, transparent);
+  line-height: 1;
+  border-radius: 6px;
+}
+
+.tag-star-btn:hover {
+  color: var(--app-text);
+}
 
 /* v5.2.0 additions */
 .danger-button {

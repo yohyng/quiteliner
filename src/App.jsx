@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-const APP_VERSION = "5.8.2";
+const APP_VERSION = "5.8.3";
 const APP_VERSION_LABEL = `Quietliner v${APP_VERSION}`;
 const STORAGE_KEY = "quietliner.state.v4";
 const DEVICE_KEY = "quietliner.device.v1";
@@ -224,6 +224,7 @@ const DEFAULT_SETTINGS = {
   rootTitle: "All Notes",
   typewriterMode: false,
   typewriterAnchor: 0.72,
+  favoriteTags: [],
 };
 
 const DEFAULT_SYNC = {
@@ -488,6 +489,23 @@ function countChars(node, drafts = {}) {
   const own = drafts[node.id] ?? node.text ?? "";
   const childCount = (node.children || []).reduce((sum, child) => sum + countChars(child, drafts), 0);
   return own.length + childCount;
+}
+
+function extractTags(text) {
+  const matches = String(text || "").match(/#([^\s#.,!?。、！？]+)/g) || [];
+  return matches.map((m) => m.slice(1).toLowerCase());
+}
+
+function collectAllTags(items) {
+  const tags = new Set();
+  const walk = (nodes) => {
+    for (const node of nodes || []) {
+      extractTags(node.text).forEach((t) => tags.add(t));
+      walk(node.children);
+    }
+  };
+  walk(items);
+  return [...tags].sort();
 }
 
 function applyDraftsToItems(items, drafts) {
@@ -1063,6 +1081,8 @@ function OutlineRow({
   onKeyDown,
   onToggleFavorite,
   onToggleCollapse,
+  onToggleComplete,
+  onDeleteNode,
   onZoom,
   onBeginSelect,
   onEnterSelect,
@@ -1075,12 +1095,21 @@ function OutlineRow({
   dragOver,
 }) {
   const textareaRef = useRef(null);
+  const menuRef = useRef(null);
+  const [menuOpen, setMenuOpen] = useState(false);
   const value = drafts[node.id] ?? node.text ?? "";
   const hasQuery = query.trim().length > 0;
   const isActive = activeId === node.id;
   const chars = countChars(node, drafts);
   const hasChildren = Boolean(node.children?.length);
   const hasBody = hasStoredBody(node);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    const close = (e) => { if (!menuRef.current?.contains(e.target)) setMenuOpen(false); };
+    document.addEventListener("pointerdown", close, true);
+    return () => document.removeEventListener("pointerdown", close, true);
+  }, [menuOpen]);
 
   useEffect(() => {
     const el = textareaRef.current;
@@ -1118,23 +1147,15 @@ function OutlineRow({
           <span />
         </button>
         <button
-          className="drag-grip"
-          type="button"
-          draggable
-          aria-label="Move this row"
-          title="Drag to move / Shift-drag onto a row to make it a child"
-          onDragStart={(event) => onDragStartRow(event, node.id)}
-          onDragEnd={onDragEndRow}
-        >
-          ⋮
-        </button>
-        <button
           className={`zoom-dot-button ${hasBody ? "has-body" : ""}`}
           type="button"
-          aria-label="Zoom into this item"
-          title="Zoom"
+          draggable
+          aria-label="Zoom / Drag to move"
+          title="クリックでズーム、ドラッグで移動"
           onMouseDown={(event) => event.preventDefault()}
           onClick={() => onZoom(node.id)}
+          onDragStart={(event) => onDragStartRow(event, node.id)}
+          onDragEnd={onDragEndRow}
         >
           <span />
         </button>
@@ -1179,20 +1200,40 @@ function OutlineRow({
         />
       </div>
 
-      <div className="row-actions">
-        <span className="char-count" title="このブロック配下の文字数">
-          {chars}
-        </span>
+      <div className="row-actions" ref={menuRef}>
+        <span className="char-count" title="このブロック配下の文字数">{chars > 0 ? chars : ""}</span>
         <button
-          className="favorite-button"
+          className="more-button"
           type="button"
-          aria-label={node.favorite ? "Unfavorite" : "Favorite"}
-          title={node.favorite ? "Unfavorite" : "Favorite"}
+          aria-label="Actions"
+          title="アクション"
           onMouseDown={(event) => event.preventDefault()}
-          onClick={() => onToggleFavorite(node.id)}
+          onClick={() => setMenuOpen((v) => !v)}
         >
-          {node.favorite ? "★" : "☆"}
+          ···
         </button>
+        {menuOpen && (
+          <div className="row-menu">
+            <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => { setMenuOpen(false); onZoom(node.id); }}>
+              ⊙ ズームイン
+            </button>
+            <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => { setMenuOpen(false); onToggleComplete(node.id); }}>
+              {node.completed ? "↩ 完了を解除" : "✓ 完了にする"}
+            </button>
+            <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => { setMenuOpen(false); onToggleFavorite(node.id); }}>
+              {node.favorite ? "★ お気に入り解除" : "☆ お気に入り"}
+            </button>
+            {hasChildren && (
+              <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => { setMenuOpen(false); onToggleCollapse(node.id); }}>
+                {node.collapsed ? "▶ 展開" : "▼ 折りたたむ"}
+              </button>
+            )}
+            <div className="row-menu-divider" />
+            <button type="button" className="row-menu-danger" onMouseDown={(e) => e.preventDefault()} onClick={() => { setMenuOpen(false); onDeleteNode(node.id); }}>
+              🗑 削除
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -1318,6 +1359,19 @@ export default function App() {
   const visibleIds = useMemo(() => visibleRows.map(({ node }) => node.id), [visibleRows]);
   const selectedIdSet = useMemo(() => new Set(selectedIds), [selectedIds]);
   const favorites = useMemo(() => collectFavorites(items), [items]);
+  const allTags = useMemo(() => collectAllTags(items), [items]);
+  const favoritedTagsSet = useMemo(() => new Set(settings.favoriteTags || []), [settings.favoriteTags]);
+  const sortedTags = useMemo(() => {
+    const favs = allTags.filter((t) => favoritedTagsSet.has(t));
+    const rest = allTags.filter((t) => !favoritedTagsSet.has(t));
+    return [...favs, ...rest];
+  }, [allTags, favoritedTagsSet]);
+  const displayRows = useMemo(() => {
+    const trimmed = query.trim();
+    if (!trimmed.startsWith("#") || !trimmed.slice(1)) return visibleRows;
+    const tag = trimmed.slice(1).toLowerCase();
+    return visibleRows.filter(({ node }) => extractTags(node.text).includes(tag));
+  }, [visibleRows, query]);
   const zoomTitle = zoomRootNode ? getReadableTitle(zoomRootNode) : rootTitle;
   const activeTheme = settings.theme === "dark" ? "dark" : "light";
 
@@ -1993,6 +2047,14 @@ export default function App() {
     }
   }, [applyTextThen, commitDraft, drafts, focusNode]);
 
+  const toggleFavoriteTag = useCallback((tag) => {
+    setSettings((prev) => {
+      const tags = prev.favoriteTags || [];
+      const next = tags.includes(tag) ? tags.filter((t) => t !== tag) : [...tags, tag];
+      return { ...prev, favoriteTags: next };
+    });
+  }, []);
+
   const toggleFavorite = useCallback((id) => {
     mutateItems((prev) => {
       const path = findPath(prev, id);
@@ -2001,6 +2063,30 @@ export default function App() {
       return updateNodePatch(prev, id, { favorite: !node.favorite });
     }, id);
   }, [mutateItems]);
+
+  const toggleComplete = useCallback((id) => {
+    mutateItems((prev) => {
+      const path = findPath(prev, id);
+      if (!path) return prev;
+      const node = getNodeByPath(prev, path);
+      return updateNodePatch(prev, id, { completed: !node.completed });
+    }, id);
+  }, [mutateItems]);
+
+  const deleteNode = useCallback((id) => {
+    pushHistory();
+    setItems((prev) => {
+      const root = cloneItems(prev);
+      const node = findPath(root, id) ? getNodeByPath(root, findPath(root, id)) : null;
+      const result = node?.children?.length
+        ? deleteNodeKeepChildren(root, id)
+        : deleteNodeSafe(root, id);
+      setTimeout(() => focusNode(result.focusId), 0);
+      return result.items;
+    });
+    setDrafts((prev) => { const next = { ...prev }; delete next[id]; return next; });
+    markChanged();
+  }, [focusNode, markChanged, pushHistory]);
 
   const toggleCollapse = useCallback((id) => {
     // 折りたたむとき、フォーカスが子孫にあれば折りたたみ元へ戻す
@@ -2550,6 +2636,35 @@ export default function App() {
             </button>
           ))}
         </div>
+
+        <div className="favorite-list">
+          <div className="sidebar-label">Tags</div>
+          {sortedTags.length === 0 && <p className="empty-sidebar">#タグ を入力すると表示されます</p>}
+          {sortedTags.map((tag) => {
+            const isFav = favoritedTagsSet.has(tag);
+            return (
+              <div className="tag-row" key={tag}>
+                <button
+                  className="tag-name-btn"
+                  type="button"
+                  title={`#${tag} で絞り込む`}
+                  onClick={() => setQuery(query.trim() === `#${tag}` ? "" : `#${tag}`)}
+                >
+                  #{tag}
+                </button>
+                <button
+                  className="tag-star-btn"
+                  type="button"
+                  title={isFav ? "タグのお気に入りを解除" : "タグをお気に入りに追加"}
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => toggleFavoriteTag(tag)}
+                >
+                  {isFav ? "★" : "☆"}
+                </button>
+              </div>
+            );
+          })}
+        </div>
       </aside>
       <div className="sidebar-resizer" role="separator" aria-orientation="vertical" aria-label="Resize sidebar" onPointerDown={beginSidebarResize} />
 
@@ -2652,7 +2767,7 @@ export default function App() {
                 ＋ このタイトルの下に最初のブロックを追加
               </button>
             )}
-            {visibleRows.map(({ node, depth }) => (
+            {displayRows.map(({ node, depth }) => (
               <OutlineRow
                 key={node.id}
                 node={node}
@@ -2668,6 +2783,8 @@ export default function App() {
                 onKeyDown={handleKeyDown}
                 onToggleFavorite={toggleFavorite}
                 onToggleCollapse={toggleCollapse}
+                onToggleComplete={toggleComplete}
+                onDeleteNode={deleteNode}
                 onZoom={zoomInto}
                 onBeginSelect={beginRowSelection}
                 onEnterSelect={enterRowSelection}
