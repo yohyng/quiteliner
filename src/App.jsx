@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-const APP_VERSION = "5.8.4";
+const APP_VERSION = "5.8.5";
 const APP_VERSION_LABEL = `Quietliner v${APP_VERSION}`;
 const STORAGE_KEY = "quietliner.state.v4";
 const DEVICE_KEY = "quietliner.device.v1";
@@ -633,6 +633,21 @@ function HighlightedText({ text, query }) {
   );
 }
 
+function TaggedText({ text }) {
+  const s = String(text || "");
+  const parts = [];
+  let last = 0;
+  const re = /#([^\s#.,!?。、！？]+)/g;
+  let m;
+  while ((m = re.exec(s)) !== null) {
+    if (m.index > last) parts.push(<span key={last}>{s.slice(last, m.index)}</span>);
+    parts.push(<em key={m.index} className="tag-text">{m[0]}</em>);
+    last = m.index + m[0].length;
+  }
+  if (last < s.length) parts.push(<span key={last}>{s.slice(last)}</span>);
+  return <>{parts.length ? parts : (s || " ")}</>;
+}
+
 function isImeEvent(event) {
   return Boolean(event.isComposing || event.nativeEvent?.isComposing || event.keyCode === 229);
 }
@@ -1129,6 +1144,10 @@ function OutlineRow({
   const value = drafts[node.id] ?? node.text ?? "";
   const hasQuery = query.trim().length > 0;
   const isActive = activeId === node.id;
+  const hasTags = extractTags(value).length > 0;
+  // Mirror for search highlights (always) or tag styling (blurred only,
+  // to avoid italic char-width shift misaligning the caret while typing)
+  const showMirror = hasQuery || (hasTags && !isActive);
   const chars = countChars(node, drafts);
   const hasChildren = Boolean(node.children?.length);
   const hasBody = hasStoredBody(node);
@@ -1208,10 +1227,10 @@ function OutlineRow({
         </button>
       </div>
 
-      <div className={`text-shell ${hasQuery ? "has-query" : ""}`}>
-        {hasQuery && (
+      <div className={`text-shell ${showMirror ? "has-query" : ""}`}>
+        {showMirror && (
           <div className="highlight-mirror" aria-hidden="true">
-            <HighlightedText text={value} query={query} />
+            {hasQuery ? <HighlightedText text={value} query={query} /> : <TaggedText text={value} />}
           </div>
         )}
         <textarea
