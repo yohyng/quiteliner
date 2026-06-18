@@ -1,2 +1,2 @@
-Quietliner v5.8.6
-Build: #タグ ちらつき修正＋オートコンプリート
+Quietliner v5.8.7
+Build: #タグ カーソル修正・iPad最適化・タグピル表示
