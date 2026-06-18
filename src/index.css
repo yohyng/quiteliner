@@ -1109,7 +1109,12 @@ button {
 /* Hashtag inline styling — shown in mirror when block is blurred */
 .tag-text {
   font-style: italic;
-  color: color-mix(in srgb, var(--app-text) 42%, transparent);
+  font-size: 0.82em;
+  color: color-mix(in srgb, var(--app-text) 52%, transparent);
+  background: color-mix(in srgb, var(--app-text) 7%, transparent);
+  border-radius: 4px;
+  padding: 0 4px;
+  vertical-align: baseline;
 }
 
 .search-mark {
