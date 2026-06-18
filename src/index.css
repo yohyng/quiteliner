@@ -1064,6 +1064,7 @@ button {
   inset: 0;
   pointer-events: none;
   color: var(--app-text);
+  overflow: hidden;
 }
 
 .outline-input {
@@ -1087,9 +1088,10 @@ button {
   caret-color: var(--app-text);
 }
 
-/* When the block is active (focused), hide mirror and restore textarea text color */
+/* When the block is active (focused), hide mirror and restore textarea text color.
+   visibility:hidden is used instead of display:none to avoid iOS Safari paint glitches. */
 .outline-row[data-active="true"] .text-shell.has-tags:not(.has-query) .highlight-mirror {
-  display: none;
+  visibility: hidden;
 }
 .outline-row[data-active="true"] .text-shell.has-tags:not(.has-query) .outline-input {
   color: var(--app-text);
@@ -1912,4 +1914,36 @@ html {
   background: #4a1515;
   border-color: #7a3030;
   color: #f88;
+}
+
+/* Touch / iPad performance — reduce GPU-heavy paint work on coarse-pointer (touch) devices */
+@media (pointer: coarse) {
+  /* Disable SVG noise textures: large off-screen bitmaps → main source of GPU pressure */
+  .app::after {
+    display: none;
+  }
+
+  /* Disable the long document gradient cycles; just use solid app background */
+  .app::before {
+    background: var(--app-bg) !important;
+  }
+
+  /* Reduce row transition overhead — animation not meaningful on touch */
+  .outline-row {
+    transition: none;
+  }
+
+  /* Reduce the number of paint layers triggered by transitions */
+  .sidebar,
+  .topbar {
+    transition: none;
+  }
+
+  /* Eliminate 300ms tap delay on all interactive elements */
+  button,
+  .outline-input,
+  .search-input,
+  .tag-suggest-item {
+    touch-action: manipulation;
+  }
 }

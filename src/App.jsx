@@ -1181,10 +1181,16 @@ function OutlineRow({
     onChange(node.id, newVal);
     const ht = getHashtagAtCursor(newVal, cursorPos);
     if (ht !== null) {
-      const filtered = (allTags || []).filter((t) => t.startsWith(ht.query));
-      setTagSuggest({ items: filtered.slice(0, 8), selIdx: 0 });
+      const filtered = (allTags || []).filter((t) => t.startsWith(ht.query)).slice(0, 8);
+      setTagSuggest((prev) => {
+        if (
+          prev.items.length === filtered.length &&
+          prev.items.every((t, i) => t === filtered[i])
+        ) return prev;
+        return { items: filtered, selIdx: 0 };
+      });
     } else {
-      setTagSuggest({ items: [], selIdx: 0 });
+      setTagSuggest((prev) => prev.items.length === 0 ? prev : { items: [], selIdx: 0 });
     }
   };
 
