@@ -1150,6 +1150,7 @@ function OutlineRow({
   const menuRef = useRef(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [tagSuggest, setTagSuggest] = useState({ items: [], selIdx: 0 });
+  const [hasSelection, setHasSelection] = useState(false);
   const value = drafts[node.id] ?? node.text ?? "";
   const hasQuery = query.trim().length > 0;
   const isActive = activeId === node.id;
@@ -1228,6 +1229,18 @@ function OutlineRow({
   }, [menuOpen]);
 
   useEffect(() => {
+    if (!isActive) { setHasSelection(false); return; }
+    const update = () => {
+      const el = textareaRef.current;
+      if (!el || document.activeElement !== el) return;
+      const selecting = el.selectionStart !== el.selectionEnd;
+      setHasSelection((prev) => prev === selecting ? prev : selecting);
+    };
+    document.addEventListener("selectionchange", update);
+    return () => document.removeEventListener("selectionchange", update);
+  }, [isActive]);
+
+  useEffect(() => {
     const el = textareaRef.current;
     if (!el) return;
     const prev = el.clientHeight;
@@ -1243,6 +1256,7 @@ function OutlineRow({
       className="outline-row"
       data-node-id={node.id}
       data-active={isActive ? "true" : "false"}
+      data-selecting={isActive && hasSelection ? "true" : "false"}
       data-selected={selected ? "true" : "false"}
       data-completed={node.completed ? "true" : "false"}
       data-drag-over={dragOver || ""}

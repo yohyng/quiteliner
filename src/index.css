@@ -1088,10 +1088,18 @@ button {
   caret-color: var(--app-text);
 }
 
-/* Active block with tags: keep mirror visible so hashtag styling shows even during
-   text selection. Textarea text stays transparent; the browser's native selection
-   highlight renders on top of the mirror so both are visible simultaneously.
-   Caret remains visible via caret-color set on .text-shell.has-tags .outline-input. */
+/* Active block with tags, NOT selecting text: hide mirror so the caret aligns correctly
+   with the non-italic textarea font metrics. Restore textarea text color. */
+.outline-row[data-active="true"]:not([data-selecting="true"]) .text-shell.has-tags:not(.has-query) .highlight-mirror {
+  visibility: hidden;
+}
+.outline-row[data-active="true"]:not([data-selecting="true"]) .text-shell.has-tags:not(.has-query) .outline-input {
+  color: var(--app-text);
+}
+
+/* Active block with tags, text IS selected: show mirror so hashtag styling is visible
+   during selection. The browser native selection highlight renders on top of the
+   transparent textarea, so both selection and hashtag styling are simultaneously visible. */
 
 .outline-input::placeholder {
   color: color-mix(in srgb, var(--app-text) 24%, transparent);
