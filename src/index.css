@@ -1088,14 +1088,10 @@ button {
   caret-color: var(--app-text);
 }
 
-/* When the block is active (focused), hide mirror and restore textarea text color.
-   visibility:hidden is used instead of display:none to avoid iOS Safari paint glitches. */
-.outline-row[data-active="true"] .text-shell.has-tags:not(.has-query) .highlight-mirror {
-  visibility: hidden;
-}
-.outline-row[data-active="true"] .text-shell.has-tags:not(.has-query) .outline-input {
-  color: var(--app-text);
-}
+/* Active block with tags: keep mirror visible so hashtag styling shows even during
+   text selection. Textarea text stays transparent; the browser's native selection
+   highlight renders on top of the mirror so both are visible simultaneously.
+   Caret remains visible via caret-color set on .text-shell.has-tags .outline-input. */
 
 .outline-input::placeholder {
   color: color-mix(in srgb, var(--app-text) 24%, transparent);
