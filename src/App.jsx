@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-const APP_VERSION = "5.8.8";
+const APP_VERSION = "5.8.9";
 const APP_VERSION_LABEL = `Quietliner v${APP_VERSION}`;
 const STORAGE_KEY = "quietliner.state.v4";
 const DEVICE_KEY = "quietliner.device.v1";
@@ -510,6 +510,25 @@ function collectFavorites(items, out = []) {
   return out;
 }
 
+// Collect the ID of a node and all its descendants (used for soft-delete tracking)
+function collectNodeIds(items, id) {
+  const path = findPath(items, id);
+  if (!path) return [id];
+  const node = getNodeByPath(items, path);
+  const ids = [];
+  const walk = (n) => { if (!n?.id) return; ids.push(n.id); (n.children || []).forEach(walk); };
+  walk(node);
+  return ids;
+}
+
+// Remove nodes whose ID is in deletedIds from an items tree (used after merge/pull)
+function filterDeletedFromTree(items, deletedIds) {
+  if (!deletedIds?.size) return items;
+  return items
+    .filter((node) => !deletedIds.has(node.id))
+    .map((node) => ({ ...node, children: filterDeletedFromTree(node.children || [], deletedIds) }));
+}
+
 function countChars(node, drafts = {}) {
   const own = drafts[node.id] ?? node.text ?? "";
   const childCount = (node.children || []).reduce((sum, child) => sum + countChars(child, drafts), 0);
@@ -698,6 +717,7 @@ function loadState() {
       updatedAt: parsed.updatedAt || nowIso(),
       settings: { ...DEFAULT_SETTINGS, ...(parsed.settings || {}) },
       sync: { ...DEFAULT_SYNC, ...(parsed.sync || {}) },
+      deletedIds: new Set(Array.isArray(parsed.deletedIds) ? parsed.deletedIds : []),
     };
   } catch {
     return {
@@ -706,6 +726,7 @@ function loadState() {
       updatedAt: nowIso(),
       settings: DEFAULT_SETTINGS,
       sync: DEFAULT_SYNC,
+      deletedIds: new Set(),
     };
   }
 }
@@ -802,7 +823,7 @@ function dedupeTree(items, seen = new Set()) {
   return out;
 }
 
-function mergeNodeLists(localList = [], remoteList = []) {
+function mergeNodeLists(localList = [], remoteList = [], deletedIds = new Set()) {
   const result = [];
   const used = new Set();
   const localById = new Map((localList || []).map((node) => [node.id, node]));
@@ -817,6 +838,8 @@ function mergeNodeLists(localList = [], remoteList = []) {
   });
 
   orderedIds.forEach((id) => {
+    // Skip nodes that were explicitly deleted on either side
+    if (deletedIds.has(id)) { used.add(id); return; }
     const localNode = localById.get(id);
     const remoteNode = remoteById.get(id);
     if (localNode && remoteNode) {
@@ -863,7 +886,12 @@ function mergeNode(localNode, remoteNode) {
 function mergePayloads(localPayload, remotePayload) {
   const localItems = Array.isArray(localPayload?.items) ? localPayload.items : [];
   const remoteItems = Array.isArray(remotePayload?.items) ? remotePayload.items : [];
-  const mergedItems = dedupeTree(mergeNodeLists(localItems, remoteItems));
+  // Combine deleted IDs from both sides so neither can resurrect the other's deletions
+  const mergedDeletedIds = new Set([
+    ...(localPayload?.deletedIds || []),
+    ...(remotePayload?.deletedIds || []),
+  ]);
+  const mergedItems = dedupeTree(mergeNodeLists(localItems, remoteItems, mergedDeletedIds));
   const mergedSettings = {
     ...(remotePayload?.settings || {}),
     ...(localPayload?.settings || {}),
@@ -879,6 +907,7 @@ function mergePayloads(localPayload, remotePayload) {
     items: mergedItems.length ? mergedItems : [makeNode("")],
     settings: mergedSettings,
     summary: summarizeItems(mergedItems),
+    deletedIds: [...mergedDeletedIds].slice(-2000),
   };
 }
 
@@ -1518,6 +1547,7 @@ export default function App() {
   const [updatedAt, setUpdatedAt] = useState(initial.updatedAt);
   const [settings, setSettings] = useState(initial.settings);
   const [sync, setSync] = useState(initial.sync);
+  const [deletedIds, setDeletedIds] = useState(initial.deletedIds);
   const [drafts, setDrafts] = useState({});
   const [activeId, setActiveId] = useState(null);
   const [query, setQuery] = useState("");
@@ -1745,9 +1775,10 @@ export default function App() {
       updatedAt,
       settings,
       sync,
+      deletedIds: [...deletedIds].slice(-2000),
     };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
-  }, [getCurrentItems, version, updatedAt, settings, sync]);
+  }, [getCurrentItems, version, updatedAt, settings, sync, deletedIds]);
 
   useEffect(() => {
     const onKey = (event) => {
@@ -2093,6 +2124,8 @@ export default function App() {
       if (currentText.length === 0) {
         event.preventDefault();
         pushHistory();
+        const bsIds = collectNodeIds(itemsRef.current || [], node.id);
+        setDeletedIds((prev) => { const next = new Set(prev); bsIds.forEach((i) => next.add(i)); return next; });
         setItems((prev) => {
           const withText = updateNodeText(prev, node.id, "");
           const result = node.children?.length
@@ -2289,6 +2322,8 @@ export default function App() {
 
   const deleteNode = useCallback((id) => {
     pushHistory();
+    const ids = collectNodeIds(itemsRef.current || [], id);
+    setDeletedIds((prev) => { const next = new Set(prev); ids.forEach((i) => next.add(i)); return next; });
     setItems((prev) => {
       const root = cloneItems(prev);
       const node = findPath(root, id) ? getNodeByPath(root, findPath(root, id)) : null;
@@ -2336,6 +2371,9 @@ export default function App() {
   const deleteSelected = useCallback(() => {
     if (!selectedIds.length) return;
     pushHistory();
+    const current = itemsRef.current || [];
+    const ids = selectedIds.flatMap((id) => collectNodeIds(current, id));
+    setDeletedIds((prev) => { const next = new Set(prev); ids.forEach((i) => next.add(i)); return next; });
     setItems((prev) => {
       let result = prev;
       for (const id of selectedIds) {
@@ -2407,6 +2445,7 @@ export default function App() {
       updatedAt,
       items: currentItems,
       summary: summarizeItems(currentItems),
+      deletedIds: [...deletedIds].slice(-2000),
       settings: {
         theme: settings.theme,
         font: settings.font,
@@ -2421,7 +2460,7 @@ export default function App() {
         rootTitle: settings.rootTitle,
       },
     };
-  }, [getCurrentItems, settings, updatedAt, version]);
+  }, [getCurrentItems, deletedIds, settings, updatedAt, version]);
 
   function supabaseHeaders(extra = {}) {
     return {
@@ -2512,8 +2551,12 @@ export default function App() {
 
   function applyRemotePayload(payload, result = {}) {
     if (!payload || !Array.isArray(payload.items)) throw new Error("リモートの payload に items がありません");
+    // Merge remote deletedIds into local so cross-device deletions propagate
+    const remoteDeletedIds = new Set(payload.deletedIds || []);
+    const combinedDeletedIds = new Set([...deletedIds, ...remoteDeletedIds]);
+    if (remoteDeletedIds.size > 0) setDeletedIds(combinedDeletedIds);
     // 既存の壊れたデータ（id重複）も読み込み時に必ず正規化する
-    const safeItems = dedupeTree(payload.items);
+    const safeItems = filterDeletedFromTree(dedupeTree(payload.items), combinedDeletedIds);
     setItems(safeItems.length ? safeItems : [makeNode("")]);
     setVersion(Number(payload.version || result.remoteVersion || version + 1));
     setUpdatedAt(payload.updatedAt || result.remoteUpdatedAt || nowIso());

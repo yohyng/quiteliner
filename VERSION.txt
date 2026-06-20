@@ -1,2 +1,2 @@
-Quietliner v5.8.8
-Build: Undo/Redo ボタン追加
+Quietliner v5.8.9
+Build: 削除ノードのSync復活バグ修正
