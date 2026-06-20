@@ -532,6 +532,25 @@ button {
   color: color-mix(in srgb, var(--app-text) 82%, transparent);
 }
 
+.undo-redo-group {
+  display: flex;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.undo-redo-btn {
+  padding: 7px 10px;
+  font-size: 16px;
+  line-height: 1;
+  transition: opacity 120ms ease;
+}
+
+.undo-redo-btn:disabled {
+  opacity: 0.25;
+  cursor: default;
+  pointer-events: none;
+}
+
 .topbar-spacer {
   flex: 1 1 auto;
 }

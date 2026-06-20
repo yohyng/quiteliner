@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-const APP_VERSION = "5.8.7";
+const APP_VERSION = "5.8.8";
 const APP_VERSION_LABEL = `Quietliner v${APP_VERSION}`;
 const STORAGE_KEY = "quietliner.state.v4";
 const DEVICE_KEY = "quietliner.device.v1";
@@ -1527,6 +1527,7 @@ export default function App() {
   const [syncStatus, setSyncStatus] = useState("local only");
   const [syncLog, setSyncLog] = useState([]);
   const [dirty, setDirty] = useState(false);
+  const [historyVersion, setHistoryVersion] = useState(0);
   const [zoomRootId, setZoomRootId] = useState(null);
   const [selectedIds, setSelectedIds] = useState([]);
   const [selectionAnchorId, setSelectionAnchorId] = useState(null);
@@ -1577,6 +1578,9 @@ export default function App() {
   }, [visibleRows, query]);
   const zoomTitle = zoomRootNode ? getReadableTitle(zoomRootNode) : rootTitle;
   const activeTheme = settings.theme === "dark" ? "dark" : "light";
+  // historyVersion ticks on every push/undo/redo so canUndo/canRedo stay in sync
+  const canUndo = historyVersion >= 0 && historyIndexRef.current > 0;
+  const canRedo = historyVersion >= 0 && historyIndexRef.current < historyRef.current.length - 1;
 
   useEffect(() => {
     appStateRef.typewriterMode = Boolean(settings.typewriterMode);
@@ -1681,6 +1685,7 @@ export default function App() {
     if (sliced.length > 50) sliced.shift();
     historyRef.current = sliced;
     historyIndexRef.current = historyRef.current.length - 1;
+    setHistoryVersion((v) => v + 1);
   }, []);
 
   const undo = useCallback(() => {
@@ -1689,6 +1694,7 @@ export default function App() {
     isUndoingRef.current = true;
     setItems(JSON.parse(JSON.stringify(historyRef.current[historyIndexRef.current])));
     markChanged();
+    setHistoryVersion((v) => v + 1);
     setTimeout(() => { isUndoingRef.current = false; }, 0);
   }, [markChanged]);
 
@@ -1698,6 +1704,7 @@ export default function App() {
     isUndoingRef.current = true;
     setItems(JSON.parse(JSON.stringify(historyRef.current[historyIndexRef.current])));
     markChanged();
+    setHistoryVersion((v) => v + 1);
     setTimeout(() => { isUndoingRef.current = false; }, 0);
   }, [markChanged]);
 
@@ -2891,6 +2898,24 @@ export default function App() {
             onChange={(event) => setQuery(event.target.value)}
             placeholder="Search"
           />
+          <div className="undo-redo-group">
+            <button
+              className="ghost-button undo-redo-btn"
+              type="button"
+              title="元に戻す (Ctrl+Z)"
+              disabled={!canUndo}
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={undo}
+            >↩</button>
+            <button
+              className="ghost-button undo-redo-btn"
+              type="button"
+              title="やり直す (Ctrl+Shift+Z)"
+              disabled={!canRedo}
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={redo}
+            >↪</button>
+          </div>
           <div className="topbar-spacer" />
           <div className="top-version" title="Current app version">{APP_VERSION_LABEL}</div>
           <button
