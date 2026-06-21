@@ -1471,6 +1471,39 @@ function OutlineRow({
   );
 }
 
+function areOutlineRowPropsEqual(prev, next) {
+  return (
+    prev.node === next.node &&
+    prev.depth === next.depth &&
+    prev.query === next.query &&
+    prev.activeId === next.activeId &&
+    prev.selected === next.selected &&
+    prev.dragOver === next.dragOver &&
+    prev.allTags === next.allTags &&
+    (prev.drafts[prev.node.id] ?? "") === (next.drafts[next.node.id] ?? "") &&
+    prev.registerInput === next.registerInput &&
+    prev.onFocus === next.onFocus &&
+    prev.onBlur === next.onBlur &&
+    prev.onChange === next.onChange &&
+    prev.onKeyDown === next.onKeyDown &&
+    prev.onToggleFavorite === next.onToggleFavorite &&
+    prev.onToggleCollapse === next.onToggleCollapse &&
+    prev.onToggleComplete === next.onToggleComplete &&
+    prev.onDeleteNode === next.onDeleteNode &&
+    prev.onPatchNode === next.onPatchNode &&
+    prev.onZoom === next.onZoom &&
+    prev.onBeginSelect === next.onBeginSelect &&
+    prev.onEnterSelect === next.onEnterSelect &&
+    prev.onTextPointerDown === next.onTextPointerDown &&
+    prev.onShiftClick === next.onShiftClick &&
+    prev.onDragStartRow === next.onDragStartRow &&
+    prev.onDragOverRow === next.onDragOverRow &&
+    prev.onDropRow === next.onDropRow &&
+    prev.onDragEndRow === next.onDragEndRow
+  );
+}
+const MemoOutlineRow = React.memo(OutlineRow, areOutlineRowPropsEqual);
+
 function ZoomTitleEditor({
   node,
   query,
@@ -1582,6 +1615,13 @@ export default function App() {
   const historyIndexRef = useRef(-1);
   const isUndoingRef = useRef(false);
   const itemsRef = useRef(items);
+  // Stable refs updated every render so callbacks can read current values without deps
+  const draftsRef = useRef(drafts);
+  const uiHiddenRef = useRef(uiHidden);
+  const settingsOpenRef = useRef(settingsOpen);
+  draftsRef.current = drafts;
+  uiHiddenRef.current = uiHidden;
+  settingsOpenRef.current = settingsOpen;
 
   const zoomRootNode = useMemo(() => getNodeById(items, zoomRootId), [items, zoomRootId]);
   const zoomTrail = useMemo(() => (zoomRootId ? findTrail(items, zoomRootId) : []), [items, zoomRootId]);
@@ -1967,8 +2007,8 @@ export default function App() {
   const handleChange = useCallback((id, value) => {
     const nextValue = expandInlineCommands(value);
     setDrafts((prev) => ({ ...prev, [id]: nextValue }));
-    if (!uiHidden && !settingsOpen) setUiHidden(true);
-  }, [settingsOpen, uiHidden]);
+    if (!uiHiddenRef.current && !settingsOpenRef.current) setUiHidden(true);
+  }, []);
 
   const beginRowSelection = useCallback((event, id) => {
     if (event.button !== 0) return;
@@ -2056,7 +2096,7 @@ export default function App() {
   const handleKeyDown = useCallback((event, node) => {
     if (isImeEvent(event)) return;
     const el = event.target;
-    const currentText = drafts[node.id] ?? node.text ?? "";
+    const currentText = draftsRef.current[node.id] ?? node.text ?? "";
     const meta = event.ctrlKey || event.metaKey;
     const flat = visibleRows.map(({ node: rowNode }) => rowNode.id);
     const index = flat.indexOf(node.id);
@@ -2255,11 +2295,11 @@ export default function App() {
         focusNode(nextId, "start");
       }
     }
-  }, [applyTextThen, commitDraft, drafts, focusNode, focusNodeAtIndex, markChanged, mutateItems, pushHistory, selectionAnchorId, setSelectedIds, setSelectionAnchorId, setActiveId, visibleRows]);
+  }, [applyTextThen, commitDraft, focusNode, focusNodeAtIndex, markChanged, mutateItems, pushHistory, selectionAnchorId, setSelectedIds, setSelectionAnchorId, setActiveId, visibleRows]);
 
   const handleZoomTitleKeyDown = useCallback((event, node) => {
     if (isImeEvent(event)) return;
-    const currentText = drafts[node.id] ?? node.text ?? "";
+    const currentText = draftsRef.current[node.id] ?? node.text ?? "";
 
     if (event.key === "Enter") {
       if (event.shiftKey) {
@@ -2288,7 +2328,11 @@ export default function App() {
       setUiHidden(false);
       setTimeout(() => document.querySelector(".search-input")?.focus(), 0);
     }
-  }, [applyTextThen, commitDraft, drafts, focusNode]);
+  }, [applyTextThen, commitDraft, focusNode]);
+
+  const handleTextPointerDown = useCallback((id, startX, startY) => {
+    textDragAnchorRef.current = { id, startX, startY };
+  }, []);
 
   const handlePatchNode = useCallback((id, patch) => {
     mutateItems((prev) => updateNodePatch(prev, id, patch), null);
@@ -3050,7 +3094,7 @@ export default function App() {
               </button>
             )}
             {displayRows.map(({ node, depth }) => (
-              <OutlineRow
+              <MemoOutlineRow
                 key={node.id}
                 node={node}
                 depth={depth}
@@ -3071,7 +3115,7 @@ export default function App() {
                 onZoom={zoomInto}
                 onBeginSelect={beginRowSelection}
                 onEnterSelect={enterRowSelection}
-                onTextPointerDown={(id, startX, startY) => { textDragAnchorRef.current = { id, startX, startY }; }}
+                onTextPointerDown={handleTextPointerDown}
                 onShiftClick={handleShiftClick}
                 onDragStartRow={handleDragStartRow}
                 onDragOverRow={handleDragOverRow}
