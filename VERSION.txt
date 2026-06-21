@@ -1,2 +1,3 @@
-Quietliner v5.8.9
-Build: 削除ノードのSync復活バグ修正
+Quietliner v5.9.0
+Build: iPadレスポンシブ対応 — サイドバーオーバーレイ化・タッチターゲット改善・セーフエリア対応
+

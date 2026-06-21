@@ -337,12 +337,13 @@ button {
   grid-column: 1;
   position: sticky;
   top: 0;
-  height: 100vh;
+  height: 100dvh;
   padding: 24px 18px;
   border-right: 1px solid color-mix(in srgb, var(--app-text) 10%, transparent);
   background: transparent;
   backdrop-filter: none;
   overflow-y: auto;
+  will-change: transform;
 }
 
 
@@ -1387,7 +1388,12 @@ kbd {
   font-size: 12px;
 }
 
-@media (max-width: 760px) {
+/* Sidebar backdrop — visible only on tablet/mobile when sidebar is open */
+.sidebar-backdrop {
+  display: none;
+}
+
+@media (max-width: 1023px) {
   .app {
     grid-template-columns: 1fr;
   }
@@ -1399,13 +1405,32 @@ kbd {
   .sidebar {
     position: fixed;
     z-index: 30;
-    width: min(280px, 84vw);
+    width: min(300px, 88vw);
+    height: 100dvh;
     transform: translateX(-100%);
+    background: var(--app-bg);
+    border-right: 1px solid color-mix(in srgb, var(--app-text) 12%, transparent);
+    box-shadow: 4px 0 32px color-mix(in srgb, var(--app-text) 12%, transparent);
   }
 
-  .app:not(.ui-hidden) .sidebar:focus-within,
-  .app:not(.ui-hidden) .sidebar:hover {
+  /* JS-controlled: show sidebar when not collapsed */
+  .app:not(.sidebar-collapsed):not(.ui-hidden) .sidebar {
     transform: translateX(0);
+  }
+
+  /* Override desktop collapsed-state transform so tablet uses translateX(-100%) */
+  .sidebar-collapsed .sidebar {
+    opacity: 1 !important;
+    transform: translateX(-100%) !important;
+  }
+
+  /* Backdrop: covers main content when sidebar is open */
+  .sidebar-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 29;
+    background: rgba(0, 0, 0, 0.22);
   }
 
   .topbar {
@@ -1418,7 +1443,7 @@ kbd {
 
   .editor-wrap {
     width: 100%;
-    padding: 76px 14px 96px;
+    padding: 76px 16px 96px;
   }
 
   .outline-row {
@@ -1431,6 +1456,21 @@ kbd {
 
   .settings-grid {
     grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 599px) {
+  .topbar {
+    padding: 10px 12px;
+    gap: 6px;
+  }
+
+  .editor-wrap {
+    padding: 60px 12px 80px;
+  }
+
+  .ghost-button {
+    padding: 8px 10px;
   }
 }
 
@@ -1553,7 +1593,7 @@ kbd {
   width: auto !important;
 }
 
-@media (max-width: 760px) {
+@media (max-width: 1023px) {
   .outline-row {
     grid-template-columns: calc(var(--depth) * 20px + 72px) minmax(0, 1fr) auto;
   }
@@ -1973,5 +2013,41 @@ html {
   .search-input,
   .tag-suggest-item {
     touch-action: manipulation;
+  }
+
+  /* Minimum 44px touch targets for small interactive elements */
+  .zoom-dot-button {
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  .collapse-button {
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  .more-button {
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  .select-grip {
+    width: 36px;
+    height: 44px;
+  }
+}
+
+/* Safe area insets for iOS notch / home bar */
+@supports (padding: env(safe-area-inset-top)) {
+  .topbar {
+    padding-top: max(18px, calc(env(safe-area-inset-top) + 8px));
+  }
+
+  .sidebar {
+    padding-top: max(24px, calc(env(safe-area-inset-top) + 10px));
+  }
+
+  .action-menu {
+    bottom: max(28px, calc(env(safe-area-inset-bottom) + 16px));
   }
 }
