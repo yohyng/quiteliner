@@ -1090,12 +1090,19 @@ button {
 .outline-input {
   position: relative;
   display: block;
-  resize: none;
-  overflow: hidden;
   outline: 0;
   color: var(--app-text);
   background: transparent;
   caret-color: var(--app-text);
+  cursor: text;
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+.outline-input:empty::before {
+  content: attr(data-placeholder);
+  color: color-mix(in srgb, var(--app-text) 24%, transparent);
+  pointer-events: none;
 }
 
 .text-shell.has-query .outline-input {
@@ -2054,12 +2061,6 @@ html {
 
 /* Textarea auto-resize without JS reflow — supported Chrome 123+ / Safari 18+ (covers modern iOS) */
 @supports (field-sizing: content) {
-  .outline-input {
-    field-sizing: content;
-    height: auto;
-    min-height: 30px;
-  }
-
   .zoom-title-input {
     field-sizing: content;
     height: auto;

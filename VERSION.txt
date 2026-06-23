@@ -1,3 +1,4 @@
-Quietliner v5.9.2
-Build: タイピング高速化2 — rAF高さ計算遅延・タッチselectionchange除去
+Quietliner v5.9.3
+Build: contenteditable移行 — iOS native editing path (plaintext-only div) + autoCorrect/Capitalize/Complete off
+
 

@@ -1,8 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-const APP_VERSION = "5.9.2";
+const APP_VERSION = "5.9.3";
 const APP_VERSION_LABEL = `Quietliner v${APP_VERSION}`;
-const supportsFieldSizing = typeof CSS !== "undefined" && CSS.supports("field-sizing", "content");
 const isTouchPrimary = typeof window !== "undefined" && window.matchMedia("(pointer: coarse)").matches;
 const STORAGE_KEY = "quietliner.state.v4";
 const DEVICE_KEY = "quietliner.device.v1";
@@ -1148,6 +1147,74 @@ function looksLikeNotionToggle(text) {
   return lines.filter((l) => /^\s*[-*] \S/.test(l)).length >= 2;
 }
 
+// --- contenteditable helpers (replace textarea selection APIs) ---
+
+function getCESelection(el) {
+  const sel = window.getSelection();
+  if (!sel || !sel.rangeCount) return { start: 0, end: 0 };
+  const range = sel.getRangeAt(0);
+  if (!el || !el.contains(range.commonAncestorContainer)) return { start: 0, end: 0 };
+  const pre = range.cloneRange();
+  pre.selectNodeContents(el);
+  pre.setEnd(range.startContainer, range.startOffset);
+  const start = pre.toString().length;
+  return { start, end: start + range.toString().length };
+}
+
+function setCECursor(el, offset) {
+  if (!el) return;
+  el.focus();
+  const sel = window.getSelection();
+  if (!sel) return;
+  const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+  let remaining = Math.max(0, offset);
+  let node;
+  while ((node = walker.nextNode())) {
+    if (remaining <= node.textContent.length) {
+      const r = document.createRange();
+      r.setStart(node, remaining);
+      r.collapse(true);
+      sel.removeAllRanges();
+      sel.addRange(r);
+      return;
+    }
+    remaining -= node.textContent.length;
+  }
+  const r = document.createRange();
+  r.selectNodeContents(el);
+  r.collapse(false);
+  sel.removeAllRanges();
+  sel.addRange(r);
+}
+
+function getCECaretNav(el) {
+  const sel = window.getSelection();
+  if (!sel || !sel.rangeCount || !el) return null;
+  const r = sel.getRangeAt(0).cloneRange();
+  r.collapse(true);
+  const rects = r.getClientRects();
+  if (!rects.length) return null;
+  const caretRect = rects[0];
+  const elRect = el.getBoundingClientRect();
+  return {
+    left: caretRect.left,
+    isFirstLine: caretRect.top - elRect.top < 4,
+    isLastLine: elRect.bottom - caretRect.bottom < 4,
+  };
+}
+
+function getCECaretIndexForX(el, side, targetX) {
+  if (!el || typeof document.caretRangeFromPoint !== "function") return 0;
+  const elRect = el.getBoundingClientRect();
+  const y = side === "first" ? elRect.top + 2 : elRect.bottom - 2;
+  const range = document.caretRangeFromPoint(targetX, y);
+  if (!range || !el.contains(range.startContainer)) return 0;
+  const pre = range.cloneRange();
+  pre.selectNodeContents(el);
+  pre.setEnd(range.startContainer, range.startOffset);
+  return pre.toString().length;
+}
+
 function OutlineRow({
   node,
   depth,
@@ -1185,7 +1252,6 @@ function OutlineRow({
   // Uncontrolled: current text lives in a ref, not React state
   const localValueRef = useRef(drafts[node.id] ?? node.text ?? "");
   const flushTimerRef = useRef(null);
-  const resizeRafRef = useRef(null);
   const hasQuery = query.trim().length > 0;
   const isActive = activeId === node.id;
   const hasTags = extractTags(localValueRef.current).length > 0;
@@ -1198,40 +1264,26 @@ function OutlineRow({
     const el = textareaRef.current;
     if (!el) return;
     const currentValue = localValueRef.current;
-    const cursorPos = el.selectionStart;
+    const cursorPos = getCESelection(el).start;
     const ht = getHashtagAtCursor(currentValue, cursorPos);
     if (!ht) return;
     const newValue = `${currentValue.slice(0, ht.start)}#${tag} ${currentValue.slice(cursorPos)}`;
     const newCursor = ht.start + tag.length + 2;
     localValueRef.current = newValue;
-    el.value = newValue;
+    el.textContent = newValue;
     clearTimeout(flushTimerRef.current);
     onChange(node.id, newValue);
     setTagSuggest({ items: [], selIdx: 0 });
     requestAnimationFrame(() => {
-      if (textareaRef.current) textareaRef.current.setSelectionRange(newCursor, newCursor);
+      if (textareaRef.current) setCECursor(textareaRef.current, newCursor);
     });
   };
 
   const handleLocalChange = (event) => {
-    const el = event.target;
-    const newVal = el.value;
-    const cursorPos = el.selectionStart;
+    const el = event.currentTarget;
+    const newVal = el.textContent || "";
+    const cursorPos = getCESelection(el).start;
     localValueRef.current = newVal;
-
-    // Resize textarea for non-field-sizing browsers.
-    // Deferred to rAF so the forced reflow (height:auto → scrollHeight)
-    // happens outside the input event critical path — no layout thrashing.
-    if (!supportsFieldSizing) {
-      cancelAnimationFrame(resizeRafRef.current);
-      resizeRafRef.current = requestAnimationFrame(() => {
-        const target = textareaRef.current;
-        if (!target) return;
-        target.style.height = "auto";
-        target.style.height = `${Math.max(28, target.scrollHeight)}px`;
-        if (document.activeElement === target) keepActiveEditorComfortable(target);
-      });
-    }
 
     // Tag autocomplete (local only, no React state for the text itself)
     const ht = getHashtagAtCursor(newVal, cursorPos);
@@ -1298,36 +1350,29 @@ function OutlineRow({
     if (isTouchPrimary) return;
     const update = () => {
       const el = textareaRef.current;
-      if (!el || document.activeElement !== el) return;
-      const selecting = el.selectionStart !== el.selectionEnd;
+      if (!el) return;
+      const { start, end } = getCESelection(el);
+      const selecting = start !== end;
       setHasSelection((prev) => prev === selecting ? prev : selecting);
     };
     document.addEventListener("selectionchange", update);
     return () => document.removeEventListener("selectionchange", update);
   }, [isActive]);
 
-  // Resize on focus change (non-field-sizing browsers)
+  // Mount: initialize contenteditable with text
   useEffect(() => {
-    if (supportsFieldSizing) return;
     const el = textareaRef.current;
-    if (!el) return;
-    el.style.height = "auto";
-    const next = Math.max(28, el.scrollHeight);
-    el.style.height = `${next}px`;
-  }, [isActive]);
+    if (el) el.textContent = localValueRef.current;
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // External node update (undo/redo, sync): imperatively update textarea
+  // External node update (undo/redo, sync): imperatively update contenteditable
   useEffect(() => {
     const externalVal = node.text ?? "";
     const el = textareaRef.current;
     if (!el) return;
     if (externalVal !== localValueRef.current) {
       localValueRef.current = externalVal;
-      el.value = externalVal;
-      if (!supportsFieldSizing) {
-        el.style.height = "auto";
-        el.style.height = `${Math.max(28, el.scrollHeight)}px`;
-      }
+      el.textContent = externalVal;
     }
   }, [node]);
 
@@ -1335,7 +1380,6 @@ function OutlineRow({
   useEffect(() => {
     return () => {
       clearTimeout(flushTimerRef.current);
-      cancelAnimationFrame(resizeRafRef.current);
     };
   }, []);
 
@@ -1403,23 +1447,26 @@ function OutlineRow({
             {hasQuery ? <HighlightedText text={localValueRef.current} query={query} /> : <TaggedText text={localValueRef.current} />}
           </div>
         )}
-        <textarea
+        <div
           ref={(el) => {
             textareaRef.current = el;
             registerInput(node.id, el);
           }}
           className="outline-input"
-          rows={1}
-          defaultValue={localValueRef.current}
-          placeholder="Write something..."
+          contentEditable="plaintext-only"
+          suppressContentEditableWarning
+          data-placeholder="Write something..."
           spellCheck={false}
+          autoCorrect="off"
+          autoCapitalize="off"
+          autoComplete="off"
           onFocus={() => onFocus(node.id)}
           onBlur={() => {
             clearTimeout(flushTimerRef.current);
             setTagSuggest({ items: [], selIdx: 0 });
             onBlur(node.id, localValueRef.current);
           }}
-          onChange={handleLocalChange}
+          onInput={handleLocalChange}
           onKeyDown={handleLocalKeyDown}
           onPointerDown={(event) => {
             if (event.button !== 0) return;
@@ -1762,9 +1809,13 @@ export default function App() {
       const el = inputRefs.current.get(id);
       if (!el) return false;
       el.focus({ preventScroll: false });
-      const end = el.value.length;
-      const pos = select === "start" ? 0 : end;
-      try { el.setSelectionRange(pos, pos); } catch { /* noop */ }
+      if (el.tagName === "TEXTAREA") {
+        const end = el.value.length;
+        const pos = select === "start" ? 0 : end;
+        try { el.setSelectionRange(pos, pos); } catch { /* noop */ }
+      } else {
+        setCECursor(el, select === "start" ? 0 : (el.textContent || "").length);
+      }
       keepActiveEditorComfortable(el);
       return true;
     };
@@ -1779,8 +1830,13 @@ export default function App() {
       const el = inputRefs.current.get(id);
       if (!el) return false;
       el.focus({ preventScroll: false });
-      const pos = Math.max(0, Math.min(index ?? el.value.length, el.value.length));
-      try { el.setSelectionRange(pos, pos); } catch { /* noop */ }
+      if (el.tagName === "TEXTAREA") {
+        const pos = Math.max(0, Math.min(index ?? el.value.length, el.value.length));
+        try { el.setSelectionRange(pos, pos); } catch { /* noop */ }
+      } else {
+        const len = (el.textContent || "").length;
+        setCECursor(el, Math.max(0, Math.min(index ?? len, len)));
+      }
       keepActiveEditorComfortable(el);
       return true;
     };
@@ -2158,6 +2214,7 @@ export default function App() {
     const meta = event.ctrlKey || event.metaKey;
     const flat = visibleRows.map(({ node: rowNode }) => rowNode.id);
     const index = flat.indexOf(node.id);
+    const { start: selStart, end: selEnd } = el ? getCESelection(el) : { start: currentText.length, end: currentText.length };
 
     // Cmd/Ctrl+Enter: 完了状態トグル（WorkFlowy互換）
     if (meta && event.key === "Enter") {
@@ -2168,13 +2225,13 @@ export default function App() {
 
     if (event.key === "Enter") {
       if (event.shiftKey) {
-        // Shift+Enter is an in-block line break. Let the textarea handle it naturally.
+        // Shift+Enter is an in-block line break. Let the browser handle it naturally.
         return;
       }
       event.preventDefault();
       // Split the block at the caret: text before the caret stays, text after
       // moves into the new sibling block (standard outliner behaviour).
-      const caret = typeof el?.selectionStart === "number" ? el.selectionStart : currentText.length;
+      const caret = selStart;
       const before = currentText.slice(0, caret);
       const after = currentText.slice(caret);
       const next = makeNode(after);
@@ -2184,7 +2241,7 @@ export default function App() {
 
     if (event.key === "Tab") {
       event.preventDefault();
-      const caret = typeof el?.selectionStart === "number" ? el.selectionStart : currentText.length;
+      const caret = selStart;
       applyTextThen(node.id, currentText, (base) => (event.shiftKey ? outdentNode(base, node.id) : indentNode(base, node.id)));
       focusNodeAtIndex(node.id, caret);
       return;
@@ -2210,13 +2267,13 @@ export default function App() {
     if (event.altKey && (event.key === "ArrowUp" || event.key === "ArrowDown")) {
       event.preventDefault();
       const dir = event.key === "ArrowUp" ? -1 : 1;
-      const caret = typeof el?.selectionStart === "number" ? el.selectionStart : currentText.length;
+      const caret = selStart;
       applyTextThen(node.id, currentText, (base) => moveSibling(base, node.id, dir));
       focusNodeAtIndex(node.id, caret);
       return;
     }
 
-    if (event.key === "Backspace" && el && el.selectionStart === 0 && el.selectionEnd === 0) {
+    if (event.key === "Backspace" && el && selStart === 0 && selEnd === 0) {
       // Empty block: delete it. Children (if any) are preserved by promoting
       // them into the block's position rather than being thrown away.
       if (currentText.length === 0) {
@@ -2247,7 +2304,7 @@ export default function App() {
         const prevEl = inputRefs.current.get(prevId);
         if (prevId && prevEl) {
           event.preventDefault();
-          const prevText = prevEl.value;
+          const prevText = prevEl.tagName === "TEXTAREA" ? prevEl.value : (prevEl.textContent || "");
           const joinPos = prevText.length;
           pushHistory();
           setItems((prev) => {
@@ -2271,13 +2328,13 @@ export default function App() {
     }
 
     // Delete（前向き削除）: 行末で次のノードとマージ（Backspaceの逆）
-    if (event.key === "Delete" && el && el.selectionStart === el.value.length && el.selectionEnd === el.value.length) {
+    if (event.key === "Delete" && el && selStart === currentText.length && selEnd === currentText.length) {
       const nextId = flat[index + 1];
       const nextNode = visibleRows[index + 1]?.node;
       if (nextId && nextNode && !nextNode.children?.length) {
         event.preventDefault();
         const nextEl = inputRefs.current.get(nextId);
-        const nextText = nextEl?.value ?? nextNode.text ?? "";
+        const nextText = (nextEl ? (nextEl.tagName === "TEXTAREA" ? nextEl.value : nextEl.textContent) : null) ?? nextNode.text ?? "";
         const joinPos = currentText.length;
         pushHistory();
         setItems((prev) => {
@@ -2300,7 +2357,7 @@ export default function App() {
 
     // Shift+↑/↓: ブロック端でブロック選択を拡張（WorkFlowy互換）
     if (event.shiftKey && !event.altKey && !meta && (event.key === "ArrowUp" || event.key === "ArrowDown")) {
-      const nav = getCaretNav(el);
+      const nav = getCECaretNav(el);
       const goPrev = event.key === "ArrowUp";
       const atEdge = goPrev ? (!nav || nav.isFirstLine) : (!nav || nav.isLastLine);
       if (atEdge) {
@@ -2323,7 +2380,7 @@ export default function App() {
     // Caret-aware vertical / horizontal navigation across blocks.
     if (!event.shiftKey && !event.altKey && !meta) {
       if (event.key === "ArrowUp" || event.key === "ArrowDown") {
-        const nav = getCaretNav(el);
+        const nav = getCECaretNav(el);
         const goPrev = event.key === "ArrowUp";
         const atEdge = goPrev ? (!nav || nav.isFirstLine) : (!nav || nav.isLastLine);
         if (!atEdge) return; // move within this multi-line block
@@ -2333,11 +2390,11 @@ export default function App() {
         commitDraft(node.id);
         const targetEl = inputRefs.current.get(targetId);
         const x = nav ? nav.left : 0;
-        const idx = targetEl ? caretIndexForX(targetEl, goPrev ? "last" : "first", x) : undefined;
+        const idx = targetEl ? getCECaretIndexForX(targetEl, goPrev ? "last" : "first", x) : undefined;
         focusNodeAtIndex(targetId, idx);
         return;
       }
-      if (event.key === "ArrowLeft" && el && el.selectionStart === 0 && el.selectionEnd === 0) {
+      if (event.key === "ArrowLeft" && el && selStart === 0 && selEnd === 0) {
         const prevId = flat[index - 1];
         if (!prevId) return;
         event.preventDefault();
@@ -2345,7 +2402,7 @@ export default function App() {
         focusNode(prevId, "end");
         return;
       }
-      if (event.key === "ArrowRight" && el && el.selectionStart === el.value.length && el.selectionEnd === el.value.length) {
+      if (event.key === "ArrowRight" && el && selStart === currentText.length && selEnd === currentText.length) {
         const nextId = flat[index + 1];
         if (!nextId) return;
         event.preventDefault();
