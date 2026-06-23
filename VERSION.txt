@@ -1,4 +1,4 @@
-Quietliner v5.9.4
-Build: タッチ改善・没入感・ゾンビ修正 — セレクトモード / uiHidden gutter隠し / autoSync→smartSync / undo deletedIds修正
+Quietliner v5.9.5
+Build: 没入感強化 — ズームタイトル本文サイズ化・ui-hidden時にcrumbs/サイドバー線/editor-header消去
 
 

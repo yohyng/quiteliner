@@ -319,10 +319,16 @@ button {
 }
 
 .ui-hidden .sidebar,
+.ui-hidden .sidebar-resizer,
 .ui-hidden .topbar {
   opacity: 0;
   pointer-events: none;
   filter: blur(3px);
+}
+
+.ui-hidden .editor-header {
+  opacity: 0;
+  pointer-events: none;
 }
 
 .ui-hidden .sidebar {
@@ -351,6 +357,7 @@ button {
   grid-column: 2;
   position: relative;
   cursor: col-resize;
+  transition: opacity 240ms ease;
 }
 
 .sidebar-resizer::before {
@@ -628,6 +635,7 @@ button {
 
 .editor-header {
   margin-bottom: 34px;
+  transition: opacity 200ms ease;
 }
 
 .zoom-crumbs {
@@ -697,20 +705,20 @@ button {
 
 .zoom-title-shell {
   position: relative;
-  min-height: 44px;
+  min-height: 30px;
 }
 
 .zoom-title-mirror,
 .zoom-title-input {
   width: 100%;
-  min-height: 44px;
+  min-height: 30px;
   margin: 0;
   border: 0;
-  padding: 0 4px 6px;
+  padding: 2px 4px 4px;
   font-family: var(--app-font);
-  font-size: clamp(24px, calc(var(--editor-font-size) * 1.7), 42px);
-  font-weight: 560;
-  line-height: max(1.15, calc(var(--editor-line-height, 1.55) - 0.3));
+  font-size: var(--editor-font-size, 18px);
+  font-weight: 400;
+  line-height: var(--editor-line-height, 1.55);
   letter-spacing: var(--editor-letter-spacing, 0.01em);
   text-align: var(--editor-text-align, left);
   text-align-last: var(--editor-text-align-last, auto);
@@ -2106,6 +2114,6 @@ html {
   .zoom-title-input {
     field-sizing: content;
     height: auto;
-    min-height: 44px;
+    min-height: 30px;
   }
 }
