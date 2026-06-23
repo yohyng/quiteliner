@@ -820,6 +820,18 @@ button {
   align-items: flex-start;
   gap: 2px;
   padding: 3px 8px 0 0;
+  transition: opacity 200ms ease;
+}
+
+.ui-hidden .row-gutter {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.ui-hidden .row-actions,
+.ui-hidden .zoom-title-actions {
+  opacity: 0 !important;
+  pointer-events: none;
 }
 
 .outline-row[data-selected="true"] {
@@ -1450,6 +1462,7 @@ kbd {
 
   .editor-wrap {
     width: 100%;
+    max-width: var(--editor-max-width, 920px);
     padding: 76px 16px 96px;
   }
 
@@ -2056,6 +2069,35 @@ html {
 
   .action-menu {
     bottom: max(28px, calc(env(safe-area-inset-bottom) + 16px));
+  }
+}
+
+/* Select mode toggle — shown only on touch/tablet, hidden on pointer:fine */
+.select-mode-btn {
+  display: none;
+}
+
+@media (pointer: coarse) {
+  .select-mode-btn {
+    display: inline-flex;
+    font-size: 18px;
+    min-width: 44px;
+    min-height: 44px;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .select-mode-btn.active {
+    color: var(--app-text);
+    opacity: 1;
+    background: color-mix(in srgb, var(--app-text) 10%, transparent);
+    border-radius: 8px;
+  }
+
+  /* In touch-select-mode, make the select-grip more visible and tappable */
+  .touch-select-mode .select-grip {
+    opacity: 0.7;
+    pointer-events: auto;
   }
 }
 

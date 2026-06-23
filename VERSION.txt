@@ -1,4 +1,4 @@
-Quietliner v5.9.3
-Build: contenteditable移行 — iOS native editing path (plaintext-only div) + autoCorrect/Capitalize/Complete off
+Quietliner v5.9.4
+Build: タッチ改善・没入感・ゾンビ修正 — セレクトモード / uiHidden gutter隠し / autoSync→smartSync / undo deletedIds修正
 
 

@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-const APP_VERSION = "5.9.3";
+const APP_VERSION = "5.9.4";
 const APP_VERSION_LABEL = `Quietliner v${APP_VERSION}`;
 const isTouchPrimary = typeof window !== "undefined" && window.matchMedia("(pointer: coarse)").matches;
 const STORAGE_KEY = "quietliner.state.v4";
@@ -769,6 +769,14 @@ function ensureNodeShape(input, fallbackText = "") {
   };
 }
 
+function collectAllIds(items, out = new Set()) {
+  for (const node of items || []) {
+    if (node?.id) out.add(node.id);
+    collectAllIds(node.children || [], out);
+  }
+  return out;
+}
+
 function countNodes(items) {
   if (!Array.isArray(items)) return 0;
   return items.reduce((sum, node) => sum + 1 + countNodes(node.children || []), 0);
@@ -1281,9 +1289,19 @@ function OutlineRow({
 
   const handleLocalChange = (event) => {
     const el = event.currentTarget;
-    const newVal = el.textContent || "";
+    const rawVal = el.textContent || "";
     const cursorPos = getCESelection(el).start;
+    const newVal = expandInlineCommands(rawVal);
     localValueRef.current = newVal;
+
+    // If an inline command was expanded, update the CE div immediately
+    if (newVal !== rawVal) {
+      el.textContent = newVal;
+      const newPos = Math.max(0, cursorPos + (newVal.length - rawVal.length));
+      requestAnimationFrame(() => {
+        if (textareaRef.current) setCECursor(textareaRef.current, newPos);
+      });
+    }
 
     // Tag autocomplete (local only, no React state for the text itself)
     const ht = getHashtagAtCursor(newVal, cursorPos);
@@ -1712,6 +1730,7 @@ export default function App() {
   const [importMode, setImportMode] = useState("append");
   const [deviceId] = useState(() => getOrCreateDeviceId());
   const [dangerConfirmText, setDangerConfirmText] = useState("");
+  const [touchSelectMode, setTouchSelectMode] = useState(false);
   const [showDangerZone, setShowDangerZone] = useState(false);
   const [snapshotList, setSnapshotList] = useState([]);
   const [snapshotListStatus, setSnapshotListStatus] = useState("");
@@ -1729,9 +1748,11 @@ export default function App() {
   const draftsRef = useRef(drafts);
   const uiHiddenRef = useRef(uiHidden);
   const settingsOpenRef = useRef(settingsOpen);
+  const touchSelectModeRef = useRef(touchSelectMode);
   draftsRef.current = drafts;
   uiHiddenRef.current = uiHidden;
   settingsOpenRef.current = settingsOpen;
+  touchSelectModeRef.current = touchSelectMode;
 
   const zoomRootNode = useMemo(() => getNodeById(items, zoomRootId), [items, zoomRootId]);
   const zoomTrail = useMemo(() => (zoomRootId ? findTrail(items, zoomRootId) : []), [items, zoomRootId]);
@@ -1881,7 +1902,16 @@ export default function App() {
     if (historyIndexRef.current <= 0) return;
     historyIndexRef.current--;
     isUndoingRef.current = true;
-    setItems(JSON.parse(JSON.stringify(historyRef.current[historyIndexRef.current])));
+    const restored = JSON.parse(JSON.stringify(historyRef.current[historyIndexRef.current]));
+    setItems(restored);
+    // Remove restored node IDs from deletedIds so they don't get re-deleted on next sync
+    setDeletedIds((prev) => {
+      const restoredIds = collectAllIds(restored);
+      const next = new Set(prev);
+      let changed = false;
+      for (const id of restoredIds) { if (next.has(id)) { next.delete(id); changed = true; } }
+      return changed ? next : prev;
+    });
     markChanged();
     setHistoryVersion((v) => v + 1);
     setTimeout(() => { isUndoingRef.current = false; }, 0);
@@ -1891,7 +1921,8 @@ export default function App() {
     if (historyIndexRef.current >= historyRef.current.length - 1) return;
     historyIndexRef.current++;
     isUndoingRef.current = true;
-    setItems(JSON.parse(JSON.stringify(historyRef.current[historyIndexRef.current])));
+    const restored = JSON.parse(JSON.stringify(historyRef.current[historyIndexRef.current]));
+    setItems(restored);
     markChanged();
     setHistoryVersion((v) => v + 1);
     setTimeout(() => { isUndoingRef.current = false; }, 0);
@@ -2068,7 +2099,8 @@ export default function App() {
     if (!sync.autoSync || !dirty || !sync.supabaseUrl || !sync.supabaseKey) return;
     if (autoSyncTimer.current) clearTimeout(autoSyncTimer.current);
     autoSyncTimer.current = setTimeout(() => {
-      pushRemote("auto").catch((error) => appendLog("error", "Auto Sync failed", error.message));
+      // smartSync (fetch→merge→push) prevents zombie resurrection from blind push
+      smartSync().catch((error) => appendLog("error", "Auto Sync failed", error.message));
     }, 45000);
     return () => clearTimeout(autoSyncTimer.current);
   }, [dirty, sync.autoSync, sync.supabaseUrl, sync.supabaseKey]);
@@ -2125,6 +2157,7 @@ export default function App() {
   }, []);
 
   const beginRowSelection = useCallback((event, id) => {
+    if (isTouchPrimary && !touchSelectModeRef.current) return;
     if (event.button !== 0) return;
     event.preventDefault();
     event.stopPropagation();
@@ -2446,6 +2479,7 @@ export default function App() {
   }, [applyTextThen, commitDraft, focusNode]);
 
   const handleTextPointerDown = useCallback((id, startX, startY) => {
+    if (isTouchPrimary) return; // touch uses scroll; select mode button instead
     textDragAnchorRef.current = { id, startX, startY };
   }, []);
 
@@ -3010,7 +3044,7 @@ export default function App() {
   };
 
   return (
-    <div className={`app theme-${activeTheme} ${uiHidden ? "ui-hidden" : ""} ${settings.sidebarCollapsed ? "sidebar-collapsed" : ""} ${isSelectingRows ? "is-selecting" : ""} ${settings.typewriterMode ? "typewriter-mode" : ""}`} style={appStyle} data-bg-style={settings.backgroundStyle || "solid"} data-noise-style={settings.backgroundNoise || "mixed"}>
+    <div className={`app theme-${activeTheme} ${uiHidden ? "ui-hidden" : ""} ${settings.sidebarCollapsed ? "sidebar-collapsed" : ""} ${isSelectingRows ? "is-selecting" : ""} ${settings.typewriterMode ? "typewriter-mode" : ""} ${touchSelectMode ? "touch-select-mode" : ""}`} style={appStyle} data-bg-style={settings.backgroundStyle || "solid"} data-noise-style={settings.backgroundNoise || "mixed"}>
       <div className="top-hot-zone" onMouseEnter={() => setUiHidden(false)} />
 
       {!settings.sidebarCollapsed && !uiHidden && (
@@ -3146,6 +3180,14 @@ export default function App() {
             {syncStatus === "syncing..." ? "Syncing…" : syncStatus === "error" ? "Sync ⚠" : "Sync"}
           </button>
           <button className="ghost-button" type="button" onClick={addRootNode}>＋ New</button>
+          <button
+            className={`ghost-button select-mode-btn${touchSelectMode ? " active" : ""}`}
+            type="button"
+            title={touchSelectMode ? "セレクトモード ON（タップで解除）" : "セレクトモード OFF（タップで有効）"}
+            onClick={() => { setTouchSelectMode((v) => !v); setUiHidden(false); }}
+          >
+            {touchSelectMode ? "☑" : "☐"}
+          </button>
           <button className="ghost-button" type="button" onClick={() => { setSettingsOpen(true); setSettingsTab("appearance"); }}>Settings</button>
         </header>
 
