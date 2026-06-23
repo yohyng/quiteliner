@@ -1,8 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-const APP_VERSION = "5.9.1";
+const APP_VERSION = "5.9.2";
 const APP_VERSION_LABEL = `Quietliner v${APP_VERSION}`;
 const supportsFieldSizing = typeof CSS !== "undefined" && CSS.supports("field-sizing", "content");
+const isTouchPrimary = typeof window !== "undefined" && window.matchMedia("(pointer: coarse)").matches;
 const STORAGE_KEY = "quietliner.state.v4";
 const DEVICE_KEY = "quietliner.device.v1";
 const MAX_LOGS = 80;
@@ -1184,6 +1185,7 @@ function OutlineRow({
   // Uncontrolled: current text lives in a ref, not React state
   const localValueRef = useRef(drafts[node.id] ?? node.text ?? "");
   const flushTimerRef = useRef(null);
+  const resizeRafRef = useRef(null);
   const hasQuery = query.trim().length > 0;
   const isActive = activeId === node.id;
   const hasTags = extractTags(localValueRef.current).length > 0;
@@ -1217,11 +1219,18 @@ function OutlineRow({
     const cursorPos = el.selectionStart;
     localValueRef.current = newVal;
 
-    // Resize textarea for non-field-sizing browsers
+    // Resize textarea for non-field-sizing browsers.
+    // Deferred to rAF so the forced reflow (height:auto → scrollHeight)
+    // happens outside the input event critical path — no layout thrashing.
     if (!supportsFieldSizing) {
-      el.style.height = "auto";
-      el.style.height = `${Math.max(28, el.scrollHeight)}px`;
-      if (document.activeElement === el) keepActiveEditorComfortable(el);
+      cancelAnimationFrame(resizeRafRef.current);
+      resizeRafRef.current = requestAnimationFrame(() => {
+        const target = textareaRef.current;
+        if (!target) return;
+        target.style.height = "auto";
+        target.style.height = `${Math.max(28, target.scrollHeight)}px`;
+        if (document.activeElement === target) keepActiveEditorComfortable(target);
+      });
     }
 
     // Tag autocomplete (local only, no React state for the text itself)
@@ -1283,6 +1292,10 @@ function OutlineRow({
 
   useEffect(() => {
     if (!isActive) { setHasSelection(false); return; }
+    // On touch devices the listener fires on every cursor move (every keystroke),
+    // causing expensive DOM reads. Tag-styling-during-selection is not needed
+    // on touch, so skip the listener entirely.
+    if (isTouchPrimary) return;
     const update = () => {
       const el = textareaRef.current;
       if (!el || document.activeElement !== el) return;
@@ -1318,9 +1331,12 @@ function OutlineRow({
     }
   }, [node]);
 
-  // Cleanup flush timer on unmount
+  // Cleanup timers on unmount
   useEffect(() => {
-    return () => clearTimeout(flushTimerRef.current);
+    return () => {
+      clearTimeout(flushTimerRef.current);
+      cancelAnimationFrame(resizeRafRef.current);
+    };
   }, []);
 
   return (
