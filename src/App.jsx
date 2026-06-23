@@ -1,7 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-const APP_VERSION = "5.9.0";
+const APP_VERSION = "5.9.1";
 const APP_VERSION_LABEL = `Quietliner v${APP_VERSION}`;
+const supportsFieldSizing = typeof CSS !== "undefined" && CSS.supports("field-sizing", "content");
 const STORAGE_KEY = "quietliner.state.v4";
 const DEVICE_KEY = "quietliner.device.v1";
 const MAX_LOGS = 80;
@@ -1180,10 +1181,12 @@ function OutlineRow({
   const [menuOpen, setMenuOpen] = useState(false);
   const [tagSuggest, setTagSuggest] = useState({ items: [], selIdx: 0 });
   const [hasSelection, setHasSelection] = useState(false);
-  const value = drafts[node.id] ?? node.text ?? "";
+  // Uncontrolled: current text lives in a ref, not React state
+  const localValueRef = useRef(drafts[node.id] ?? node.text ?? "");
+  const flushTimerRef = useRef(null);
   const hasQuery = query.trim().length > 0;
   const isActive = activeId === node.id;
-  const hasTags = extractTags(value).length > 0;
+  const hasTags = extractTags(localValueRef.current).length > 0;
   const showMirror = hasQuery || hasTags;
   const chars = countChars(node, drafts);
   const hasChildren = Boolean(node.children?.length);
@@ -1192,12 +1195,15 @@ function OutlineRow({
   const applyTagSuggestion = (tag) => {
     const el = textareaRef.current;
     if (!el) return;
-    const currentValue = drafts[node.id] ?? node.text ?? "";
+    const currentValue = localValueRef.current;
     const cursorPos = el.selectionStart;
     const ht = getHashtagAtCursor(currentValue, cursorPos);
     if (!ht) return;
     const newValue = `${currentValue.slice(0, ht.start)}#${tag} ${currentValue.slice(cursorPos)}`;
     const newCursor = ht.start + tag.length + 2;
+    localValueRef.current = newValue;
+    el.value = newValue;
+    clearTimeout(flushTimerRef.current);
     onChange(node.id, newValue);
     setTagSuggest({ items: [], selIdx: 0 });
     requestAnimationFrame(() => {
@@ -1206,26 +1212,39 @@ function OutlineRow({
   };
 
   const handleLocalChange = (event) => {
-    const newVal = event.target.value;
-    const cursorPos = event.target.selectionStart;
-    onChange(node.id, newVal);
+    const el = event.target;
+    const newVal = el.value;
+    const cursorPos = el.selectionStart;
+    localValueRef.current = newVal;
+
+    // Resize textarea for non-field-sizing browsers
+    if (!supportsFieldSizing) {
+      el.style.height = "auto";
+      el.style.height = `${Math.max(28, el.scrollHeight)}px`;
+      if (document.activeElement === el) keepActiveEditorComfortable(el);
+    }
+
+    // Tag autocomplete (local only, no React state for the text itself)
     const ht = getHashtagAtCursor(newVal, cursorPos);
     if (ht !== null) {
       const filtered = (allTags || []).filter((t) => t.startsWith(ht.query)).slice(0, 8);
       setTagSuggest((prev) => {
-        if (
-          prev.items.length === filtered.length &&
-          prev.items.every((t, i) => t === filtered[i])
-        ) return prev;
+        if (prev.items.length === filtered.length && prev.items.every((t, i) => t === filtered[i])) return prev;
         return { items: filtered, selIdx: 0 };
       });
     } else {
       setTagSuggest((prev) => prev.items.length === 0 ? prev : { items: [], selIdx: 0 });
     }
+
+    // Debounced flush to React state (not every keystroke)
+    clearTimeout(flushTimerRef.current);
+    flushTimerRef.current = setTimeout(() => {
+      onChange(node.id, localValueRef.current);
+    }, 300);
   };
 
   const handleLocalKeyDown = (event) => {
-    if (isImeEvent(event)) { onKeyDown(event, node); return; }
+    if (isImeEvent(event)) { onKeyDown(event, node, localValueRef.current); return; }
     if (tagSuggest.items.length > 0) {
       if (event.key === "ArrowDown") {
         event.preventDefault();
@@ -1247,7 +1266,12 @@ function OutlineRow({
         return;
       }
     }
-    onKeyDown(event, node);
+    // For structural keys, cancel debounce (currentText passed directly to parent)
+    const isStructural = event.key === "Enter" || event.key === "Tab" ||
+      event.key === "Backspace" || event.key === "Delete" ||
+      (event.altKey && (event.key === "ArrowUp" || event.key === "ArrowDown"));
+    if (isStructural) clearTimeout(flushTimerRef.current);
+    onKeyDown(event, node, localValueRef.current);
   };
 
   useEffect(() => {
@@ -1269,16 +1293,35 @@ function OutlineRow({
     return () => document.removeEventListener("selectionchange", update);
   }, [isActive]);
 
+  // Resize on focus change (non-field-sizing browsers)
   useEffect(() => {
+    if (supportsFieldSizing) return;
     const el = textareaRef.current;
     if (!el) return;
-    const prev = el.clientHeight;
     el.style.height = "auto";
     const next = Math.max(28, el.scrollHeight);
     el.style.height = `${next}px`;
-    // 高さが変わったときだけスクロール調整（毎キーストロークのIMEバーブレを防ぐ）
-    if (prev !== next && document.activeElement === el) keepActiveEditorComfortable(el);
-  }, [value, activeId]);
+  }, [isActive]);
+
+  // External node update (undo/redo, sync): imperatively update textarea
+  useEffect(() => {
+    const externalVal = node.text ?? "";
+    const el = textareaRef.current;
+    if (!el) return;
+    if (externalVal !== localValueRef.current) {
+      localValueRef.current = externalVal;
+      el.value = externalVal;
+      if (!supportsFieldSizing) {
+        el.style.height = "auto";
+        el.style.height = `${Math.max(28, el.scrollHeight)}px`;
+      }
+    }
+  }, [node]);
+
+  // Cleanup flush timer on unmount
+  useEffect(() => {
+    return () => clearTimeout(flushTimerRef.current);
+  }, []);
 
   return (
     <div
@@ -1341,7 +1384,7 @@ function OutlineRow({
       <div className={`text-shell${hasQuery ? " has-query" : ""}${hasTags && !hasQuery ? " has-tags" : ""}`}>
         {showMirror && (
           <div className="highlight-mirror" aria-hidden="true">
-            {hasQuery ? <HighlightedText text={value} query={query} /> : <TaggedText text={value} />}
+            {hasQuery ? <HighlightedText text={localValueRef.current} query={query} /> : <TaggedText text={localValueRef.current} />}
           </div>
         )}
         <textarea
@@ -1351,11 +1394,15 @@ function OutlineRow({
           }}
           className="outline-input"
           rows={1}
-          value={value}
+          defaultValue={localValueRef.current}
           placeholder="Write something..."
           spellCheck={false}
-          onFocus={() => onFocus(node.id, node.text ?? "")}
-          onBlur={() => { setTagSuggest({ items: [], selIdx: 0 }); onBlur(node.id); }}
+          onFocus={() => onFocus(node.id)}
+          onBlur={() => {
+            clearTimeout(flushTimerRef.current);
+            setTagSuggest({ items: [], selIdx: 0 });
+            onBlur(node.id, localValueRef.current);
+          }}
           onChange={handleLocalChange}
           onKeyDown={handleLocalKeyDown}
           onPointerDown={(event) => {
@@ -1788,22 +1835,18 @@ export default function App() {
     if (focusId) focusNode(focusId);
   }, [focusNode, markChanged, pushHistory]);
 
-  const commitDraft = useCallback((id) => {
-    setDrafts((prevDrafts) => {
-      if (!(id in prevDrafts)) return prevDrafts;
-      const nextText = prevDrafts[id];
-      setItems((prevItems) => {
-        const path = findPath(prevItems, id);
-        if (!path) return prevItems;
-        const node = getNodeByPath(prevItems, path);
-        if ((node.text ?? "") === nextText) return prevItems;
-        markChanged();
-        return updateNodeText(prevItems, id, nextText);
-      });
-      const next = { ...prevDrafts };
+  const commitDraft = useCallback((id, explicitText) => {
+    setItems((prev) => {
+      const text = explicitText ?? draftsRef.current[id];
+      if (text == null) return prev;
+      return updateNodeText(prev, id, text);
+    });
+    setDrafts((prev) => {
+      const next = { ...prev };
       delete next[id];
       return next;
     });
+    markChanged();
   }, [markChanged]);
 
   const getCurrentItems = useCallback(() => applyDraftsToItems(items, drafts), [items, drafts]);
@@ -1993,15 +2036,14 @@ export default function App() {
     if (focusId) focusNode(focusId);
   }, [focusNode, markChanged, pushHistory]);
 
-  const handleFocus = useCallback((id, text) => {
+  const handleFocus = useCallback((id) => {
     setActiveId(id);
     setSelectedIds([]);
     setIsSelectingRows(false);
-    setDrafts((prev) => (id in prev ? prev : { ...prev, [id]: text }));
   }, []);
 
-  const handleBlur = useCallback((id) => {
-    commitDraft(id);
+  const handleBlur = useCallback((id, text) => {
+    commitDraft(id, text);
   }, [commitDraft]);
 
   const handleChange = useCallback((id, value) => {
@@ -2093,10 +2135,10 @@ export default function App() {
   }, []);
 
 
-  const handleKeyDown = useCallback((event, node) => {
+  const handleKeyDown = useCallback((event, node, currentText) => {
     if (isImeEvent(event)) return;
     const el = event.target;
-    const currentText = draftsRef.current[node.id] ?? node.text ?? "";
+    if (currentText == null) currentText = draftsRef.current[node.id] ?? node.text ?? "";
     const meta = event.ctrlKey || event.metaKey;
     const flat = visibleRows.map(({ node: rowNode }) => rowNode.id);
     const index = flat.indexOf(node.id);

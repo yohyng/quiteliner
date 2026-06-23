@@ -2051,3 +2051,18 @@ html {
     bottom: max(28px, calc(env(safe-area-inset-bottom) + 16px));
   }
 }
+
+/* Textarea auto-resize without JS reflow — supported Chrome 123+ / Safari 18+ (covers modern iOS) */
+@supports (field-sizing: content) {
+  .outline-input {
+    field-sizing: content;
+    height: auto;
+    min-height: 30px;
+  }
+
+  .zoom-title-input {
+    field-sizing: content;
+    height: auto;
+    min-height: 44px;
+  }
+}
