@@ -326,7 +326,7 @@ button {
   filter: blur(3px);
 }
 
-.ui-hidden .editor-header {
+.ui-hidden .zoom-crumbs {
   opacity: 0;
   pointer-events: none;
 }
@@ -635,7 +635,6 @@ button {
 
 .editor-header {
   margin-bottom: 34px;
-  transition: opacity 200ms ease;
 }
 
 .zoom-crumbs {
@@ -647,6 +646,7 @@ button {
   color: color-mix(in srgb, var(--app-text) 42%, transparent);
   font-size: 11px;
   line-height: 1.7;
+  transition: opacity 200ms ease;
 }
 
 .zoom-crumbs button {
