@@ -696,6 +696,7 @@ button {
   align-items: start;
   gap: 12px;
   margin: 0 0 10px;
+  padding-left: 64px;
   border-radius: 16px;
 }
 
@@ -1476,6 +1477,10 @@ kbd {
 
   .outline-row {
     grid-template-columns: calc(var(--depth) * 20px + 56px) minmax(0, 1fr) auto;
+  }
+
+  .zoom-title-editor {
+    padding-left: 56px;
   }
 
   .sync-top-button {
