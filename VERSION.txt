@@ -1,4 +1,5 @@
-Quietliner v5.9.5
-Build: 没入感強化 — ズームタイトル本文サイズ化・ui-hidden時にcrumbs/サイドバー線/editor-header消去
+Quietliner v5.9.8
+Build: inputMode="text" on contenteditable — iPadOS IMEフローティングバー抑制試み
+
 
 
