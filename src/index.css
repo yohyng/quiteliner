@@ -2122,3 +2122,140 @@ html {
     min-height: 30px;
   }
 }
+
+/* ── AuthGate ─────────────────────────────────────────────── */
+.auth-loading {
+  display: flex;
+  height: 100dvh;
+  align-items: center;
+  justify-content: center;
+  background: #0a0a0a;
+}
+
+.auth-spinner {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 2px solid #333;
+  border-top-color: #999;
+  animation: auth-spin 0.7s linear infinite;
+}
+
+@keyframes auth-spin {
+  to { transform: rotate(360deg); }
+}
+
+.auth-screen {
+  display: flex;
+  height: 100dvh;
+  align-items: center;
+  justify-content: center;
+  background: #0a0a0a;
+  padding: 16px;
+}
+
+.auth-card {
+  width: 100%;
+  max-width: 360px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 16px;
+  background: #141414;
+  padding: 28px 24px;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.6);
+}
+
+.auth-header {
+  text-align: center;
+  margin-bottom: 24px;
+}
+
+.auth-title {
+  font-size: 17px;
+  font-weight: 600;
+  color: #f0f0f0;
+  margin-bottom: 4px;
+}
+
+.auth-subtitle {
+  font-size: 12px;
+  color: #555;
+}
+
+.auth-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.auth-input {
+  width: 100%;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.3);
+  padding: 9px 12px;
+  font-size: 14px;
+  color: #e0e0e0;
+  outline: none;
+  transition: border-color 150ms ease;
+}
+
+.auth-input::placeholder {
+  color: #444;
+}
+
+.auth-input:focus {
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.auth-error {
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  border-radius: 10px;
+  background: rgba(239, 68, 68, 0.08);
+  padding: 8px 12px;
+  font-size: 12px;
+  color: #f87171;
+}
+
+.auth-submit {
+  margin-top: 4px;
+  border-radius: 10px;
+  background: #e8e8e8;
+  border: none;
+  padding: 9px 16px;
+  font-size: 14px;
+  font-weight: 500;
+  color: #111;
+  cursor: pointer;
+  transition: background 150ms ease, opacity 150ms ease;
+}
+
+.auth-submit:hover {
+  background: #fff;
+}
+
+.auth-submit:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* ── Auth signout (in settings panel) ─────────────────────── */
+.auth-signout-row {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.auth-signout-button {
+  background: transparent;
+  border: 1px solid color-mix(in srgb, var(--app-text) 18%, transparent);
+  border-radius: 8px;
+  color: color-mix(in srgb, var(--app-text) 55%, transparent);
+  font-size: 13px;
+  padding: 5px 14px;
+  cursor: pointer;
+  transition: background 150ms ease, color 150ms ease;
+}
+
+.auth-signout-button:hover {
+  background: color-mix(in srgb, var(--app-text) 7%, transparent);
+  color: var(--app-text);
+}

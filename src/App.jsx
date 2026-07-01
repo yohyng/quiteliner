@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { supabase, isSupabaseEnabled } from "./lib/supabase";
 
-const APP_VERSION = "5.9.8";
+const APP_VERSION = "5.9.9";
 const APP_VERSION_LABEL = `Quietliner v${APP_VERSION}`;
 const isTouchPrimary = typeof window !== "undefined" && window.matchMedia("(pointer: coarse)").matches;
 const STORAGE_KEY = "quietliner.state.v4";
@@ -3454,6 +3455,17 @@ export default function App() {
                   <strong>Current App Version</strong>
                   <span>{APP_VERSION_LABEL}</span>
                 </div>
+                {isSupabaseEnabled && (
+                  <div className="auth-signout-row">
+                    <button
+                      type="button"
+                      className="auth-signout-button"
+                      onClick={() => supabase.auth.signOut()}
+                    >
+                      ログアウト
+                    </button>
+                  </div>
+                )}
                 <div className="device-id-card">
                   <span>Device ID</span>
                   <code>{deviceId}</code>
