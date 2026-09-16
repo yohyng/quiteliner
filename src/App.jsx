@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { supabase, isSupabaseEnabled } from "./lib/supabase";
 
-const APP_VERSION = "5.9.9";
+const APP_VERSION = "5.9.10";
 const APP_VERSION_LABEL = `Quietliner v${APP_VERSION}`;
 const isTouchPrimary = typeof window !== "undefined" && window.matchMedia("(pointer: coarse)").matches;
 const STORAGE_KEY = "quietliner.state.v4";
@@ -2563,6 +2563,25 @@ export default function App() {
     if (focusId) focusNode(focusId);
   }, [focusNode]);
 
+  const copySelected = useCallback(() => {
+    if (!selectedIds.length) return;
+    const current = itemsRef.current || [];
+    const lines = [];
+    const collectText = (nodes, depth) => {
+      for (const node of nodes || []) {
+        if (selectedIds.includes(node.id)) {
+          const indent = "  ".repeat(depth);
+          lines.push(indent + (node.text || ""));
+          collectText(node.children, depth + 1);
+        } else {
+          collectText(node.children, depth);
+        }
+      }
+    };
+    collectText(current, 0);
+    navigator.clipboard.writeText(lines.join("\n")).catch(() => {});
+  }, [selectedIds]);
+
   const deleteSelected = useCallback(() => {
     if (!selectedIds.length) return;
     pushHistory();
@@ -3291,6 +3310,7 @@ export default function App() {
       {selectedIds.length > 0 && (
         <div className="action-menu">
           <span className="action-menu-count">{selectedIds.length}件選択</span>
+          <button className="action-menu-btn" type="button" onClick={copySelected} title="コピー">コピー</button>
           <button className="action-menu-btn" type="button" onClick={dedentSelected} title="アウトデント (Shift+Tab)">←</button>
           <button className="action-menu-btn" type="button" onClick={indentSelected} title="インデント (Tab)">→</button>
           <button className="action-menu-btn danger" type="button" onClick={deleteSelected} title="削除">削除</button>
