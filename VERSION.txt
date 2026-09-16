@@ -1,5 +1,5 @@
-Quietliner v5.9.13
-Build: Auto Sync デフォルトON・間隔を45秒→10秒に短縮
+Quietliner v5.9.14
+Build: Auto Sync中の入力消失バグ修正 — applyRemotePayload時にdraftを保護
 
 
 

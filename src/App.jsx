@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { supabase, isSupabaseEnabled } from "./lib/supabase";
 
-const APP_VERSION = "5.9.13";
+const APP_VERSION = "5.9.14";
 const APP_VERSION_LABEL = `Quietliner v${APP_VERSION}`;
 const isTouchPrimary = typeof window !== "undefined" && window.matchMedia("(pointer: coarse)").matches;
 const STORAGE_KEY = "quietliner.state.v4";
@@ -2776,7 +2776,12 @@ export default function App() {
     const combinedDeletedIds = new Set([...deletedIds, ...remoteDeletedIds]);
     if (remoteDeletedIds.size > 0) setDeletedIds(combinedDeletedIds);
     // 既存の壊れたデータ（id重複）も読み込み時に必ず正規化する
-    const safeItems = filterDeletedFromTree(dedupeTree(payload.items), combinedDeletedIds);
+    let safeItems = filterDeletedFromTree(dedupeTree(payload.items), combinedDeletedIds);
+    // 入力中のdraftを保護 — applyRemoteがタイピング中テキストを消さないよう上書き
+    const currentDrafts = draftsRef.current;
+    if (currentDrafts && Object.keys(currentDrafts).length > 0) {
+      safeItems = applyDraftsToItems(safeItems, currentDrafts);
+    }
     setItems(safeItems.length ? safeItems : [makeNode("")]);
     setVersion(Number(payload.version || result.remoteVersion || version + 1));
     setUpdatedAt(payload.updatedAt || result.remoteUpdatedAt || nowIso());
