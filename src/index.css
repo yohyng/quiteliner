@@ -2259,3 +2259,42 @@ html {
   background: color-mix(in srgb, var(--app-text) 7%, transparent);
   color: var(--app-text);
 }
+
+/* ── Save status indicator (topbar) ───────────────────────── */
+.save-status {
+  font-size: 12px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  white-space: nowrap;
+  transition: opacity 300ms ease, color 300ms ease;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.save-status[data-status="synced"],
+.save-status[data-status="local only"] {
+  color: color-mix(in srgb, var(--app-text) 35%, transparent);
+}
+
+.save-status[data-status="syncing..."] {
+  color: color-mix(in srgb, var(--app-text) 50%, transparent);
+}
+
+.save-status[data-status="error"] {
+  color: #e05c5c;
+}
+
+.save-status-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  border: 1.5px solid currentColor;
+  border-top-color: transparent;
+  animation: save-spin 0.7s linear infinite;
+  display: inline-block;
+}
+
+@keyframes save-spin {
+  to { transform: rotate(360deg); }
+}

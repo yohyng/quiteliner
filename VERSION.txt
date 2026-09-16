@@ -1,5 +1,5 @@
-Quietliner v5.9.11
-Build: Sync時にSupabase AuthのJWTトークンを使用 — RLS 401エラー修正
+Quietliner v5.9.12
+Build: トップバーに保存・接続ステータス表示追加
 
 
 

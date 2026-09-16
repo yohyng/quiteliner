@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { supabase, isSupabaseEnabled } from "./lib/supabase";
 
-const APP_VERSION = "5.9.11";
+const APP_VERSION = "5.9.12";
 const APP_VERSION_LABEL = `Quietliner v${APP_VERSION}`;
 const isTouchPrimary = typeof window !== "undefined" && window.matchMedia("(pointer: coarse)").matches;
 const STORAGE_KEY = "quietliner.state.v4";
@@ -3187,6 +3187,12 @@ export default function App() {
             >↪</button>
           </div>
           <div className="topbar-spacer" />
+          <div className="save-status" data-status={syncStatus} title={syncStatus === "error" ? lastSyncError : syncStatus}>
+            {syncStatus === "syncing..." && <span className="save-status-dot" />}
+            {syncStatus === "synced" && "✓ 保存済み"}
+            {syncStatus === "local only" && (dirty ? "● 未保存" : "✓ 保存済み")}
+            {syncStatus === "error" && "⚠ 同期エラー"}
+          </div>
           <div className="top-version" title="Current app version">{APP_VERSION_LABEL}</div>
           <button
             className="ghost-button"
