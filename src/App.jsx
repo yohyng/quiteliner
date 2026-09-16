@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { supabase, isSupabaseEnabled } from "./lib/supabase";
 
-const APP_VERSION = "5.9.10";
+const APP_VERSION = "5.9.11";
 const APP_VERSION_LABEL = `Quietliner v${APP_VERSION}`;
 const isTouchPrimary = typeof window !== "undefined" && window.matchMedia("(pointer: coarse)").matches;
 const STORAGE_KEY = "quietliner.state.v4";
@@ -2676,10 +2676,16 @@ export default function App() {
     };
   }, [getCurrentItems, deletedIds, settings, updatedAt, version]);
 
-  function supabaseHeaders(extra = {}) {
+  async function supabaseHeaders(extra = {}) {
+    const anonKey = sync.supabaseKey.trim();
+    let token = anonKey;
+    if (isSupabaseEnabled) {
+      const { data } = await supabase.auth.getSession();
+      if (data?.session?.access_token) token = data.session.access_token;
+    }
     return {
-      apikey: sync.supabaseKey.trim(),
-      Authorization: `Bearer ${sync.supabaseKey.trim()}`,
+      apikey: anonKey,
+      Authorization: `Bearer ${token}`,
       "Content-Type": "application/json",
       ...extra,
     };
@@ -2692,7 +2698,7 @@ export default function App() {
     const url = `${base}/rest/v1${path}`;
     const opts = {
       method,
-      headers: supabaseHeaders(method === "POST" || method === "PATCH" ? { Prefer: "resolution=merge-duplicates,return=representation" } : {}),
+      headers: await supabaseHeaders(method === "POST" || method === "PATCH" ? { Prefer: "resolution=merge-duplicates,return=representation" } : {}),
     };
     if (body !== undefined) opts.body = JSON.stringify(body);
     let response, text;

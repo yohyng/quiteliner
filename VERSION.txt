@@ -1,5 +1,5 @@
-Quietliner v5.9.10
-Build: 複数選択時にコピーボタン追加 — 選択ブロックをインデント付きテキストでクリップボードへ
+Quietliner v5.9.11
+Build: Sync時にSupabase AuthのJWTトークンを使用 — RLS 401エラー修正
 
 
 
