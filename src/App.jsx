@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { supabase, isSupabaseEnabled } from "./lib/supabase";
 
-const APP_VERSION = "5.9.12";
+const APP_VERSION = "5.9.13";
 const APP_VERSION_LABEL = `Quietliner v${APP_VERSION}`;
 const isTouchPrimary = typeof window !== "undefined" && window.matchMedia("(pointer: coarse)").matches;
 const STORAGE_KEY = "quietliner.state.v4";
@@ -255,7 +255,7 @@ const DEFAULT_SYNC = {
   supabaseUrl: "",
   supabaseKey: "",
   docId: "main",
-  autoSync: false,
+  autoSync: true,
 };
 
 function uid() {
@@ -2103,7 +2103,7 @@ export default function App() {
     autoSyncTimer.current = setTimeout(() => {
       // smartSync (fetch→merge→push) prevents zombie resurrection from blind push
       smartSync().catch((error) => appendLog("error", "Auto Sync failed", error.message));
-    }, 45000);
+    }, 10000);
     return () => clearTimeout(autoSyncTimer.current);
   }, [dirty, sync.autoSync, sync.supabaseUrl, sync.supabaseKey]);
 

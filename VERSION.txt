@@ -1,5 +1,5 @@
-Quietliner v5.9.12
-Build: トップバーに保存・接続ステータス表示追加
+Quietliner v5.9.13
+Build: Auto Sync デフォルトON・間隔を45秒→10秒に短縮
 
 
 
