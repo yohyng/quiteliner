@@ -628,7 +628,7 @@ button {
 }
 
 .editor-wrap {
-  width: min(var(--editor-max-width, 920px), calc(100vw - var(--sidebar-width, 252px) - 104px));
+  width: min(var(--editor-max-width, 920px), max(280px, calc(100vw - var(--sidebar-width, 252px) - 104px)));
   margin: 0 auto;
   padding: 64px 36px 120px;
 }
@@ -1647,7 +1647,45 @@ kbd {
   }
 }
 
-/* Heading level styles */
+/* Narrow viewport (split screen on landscape iPad, small phones) */
+@media (max-width: 768px) {
+  .app {
+    grid-template-columns: 1fr;
+  }
+
+  .main-panel {
+    grid-column: 1;
+  }
+
+  .sidebar {
+    position: fixed;
+    z-index: 30;
+    width: min(300px, 88vw);
+    height: 100dvh;
+    transform: translateX(-100%);
+  }
+
+  .app:not(.sidebar-collapsed):not(.ui-hidden) .sidebar {
+    transform: translateX(0);
+  }
+
+  .sidebar-collapsed .sidebar {
+    opacity: 1 !important;
+    transform: translateX(-100%) !important;
+  }
+
+  .sidebar-resizer {
+    display: none;
+  }
+
+  .editor-wrap {
+    width: 100%;
+    max-width: var(--editor-max-width, 920px);
+    padding: 76px 16px 96px;
+  }
+}
+
+
 .outline-row[data-heading="1"] .outline-input,
 .outline-row[data-heading="1"] .highlight-mirror {
   font-size: calc(var(--editor-font-size, 18px) * 1.55);

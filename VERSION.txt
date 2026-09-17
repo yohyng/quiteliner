@@ -1,5 +1,5 @@
-Quietliner v5.9.15
-Build: iPad レイアウト修正 — main-panelのgrid-column:3がタブレットで残るバグ修正
+Quietliner v5.9.16
+Build: iPad Split Screen/横向き レイアウト修正 — 768px以下ブレークポイント追加
 
 
 
