@@ -1426,6 +1426,10 @@ kbd {
     grid-template-columns: 1fr;
   }
 
+  .main-panel {
+    grid-column: 1;
+  }
+
   .sidebar-resizer {
     display: none;
   }
