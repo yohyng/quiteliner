@@ -1,5 +1,5 @@
-Quietliner v5.9.16
-Build: iPad Split Screen/横向き レイアウト修正 — 768px以下ブレークポイント追加
+Quietliner v5.9.17
+Build: Slide Over最適化 — 430px以下でgutter縮小・文字数バッジ非表示
 
 
 

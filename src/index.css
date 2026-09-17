@@ -2340,3 +2340,41 @@ html {
 @keyframes save-spin {
   to { transform: rotate(360deg); }
 }
+
+/* ── Slide Over / very narrow (≤ 430px) ───────────────────── */
+@media (max-width: 430px) {
+  .editor-wrap {
+    padding: 64px 10px 80px;
+  }
+
+  .outline-row {
+    grid-template-columns: calc(var(--depth) * 16px + 44px) minmax(0, 1fr) auto;
+  }
+
+  .outline-row::before {
+    left: 22px;
+    width: max(0px, calc(var(--depth, 0) * 16px - 14px));
+  }
+
+  .row-gutter {
+    padding: 3px 4px 0 0;
+  }
+
+  .char-count {
+    display: none;
+  }
+
+  .zoom-title-editor {
+    padding-left: 44px;
+  }
+
+  .topbar {
+    padding: 10px;
+    gap: 4px;
+  }
+
+  .top-version,
+  .save-status {
+    display: none;
+  }
+}
