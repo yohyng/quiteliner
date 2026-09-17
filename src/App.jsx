@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { supabase, isSupabaseEnabled } from "./lib/supabase";
 
-const APP_VERSION = "5.9.21";
+const APP_VERSION = "5.9.22";
 const APP_VERSION_LABEL = `Quietliner v${APP_VERSION}`;
 const isTouchPrimary = typeof window !== "undefined" && window.matchMedia("(pointer: coarse)").matches;
 const STORAGE_KEY = "quietliner.state.v4";
@@ -559,6 +559,14 @@ function getHashtagAtCursor(text, cursorPos) {
   const m = before.match(/#([^\s#.,!?。、！？]*)$/);
   if (!m) return null;
   return { start: m.index, query: m[1].toLowerCase() };
+}
+
+function collectTextMap(items, map = new Map()) {
+  for (const node of items || []) {
+    map.set(node.id, node.text ?? "");
+    if (node.children?.length) collectTextMap(node.children, map);
+  }
+  return map;
 }
 
 function applyDraftsToItems(items, drafts) {
@@ -1755,11 +1763,23 @@ export default function App() {
   const settingsOpenRef = useRef(settingsOpen);
   const touchSelectModeRef = useRef(touchSelectMode);
   const activeIdRef = useRef(activeId);
+  const versionRef = useRef(version);
+  const updatedAtRef = useRef(updatedAt);
+  const deletedIdsRef = useRef(deletedIds);
+  const settingsRef = useRef(settings);
+  const syncRef = useRef(sync);
+  const smartSyncRef = useRef(null);
+  itemsRef.current = items;
   draftsRef.current = drafts;
   uiHiddenRef.current = uiHidden;
   settingsOpenRef.current = settingsOpen;
   touchSelectModeRef.current = touchSelectMode;
   activeIdRef.current = activeId;
+  versionRef.current = version;
+  updatedAtRef.current = updatedAt;
+  deletedIdsRef.current = deletedIds;
+  settingsRef.current = settings;
+  syncRef.current = sync;
 
   const zoomRootNode = useMemo(() => getNodeById(items, zoomRootId), [items, zoomRootId]);
   const zoomTrail = useMemo(() => (zoomRootId ? findTrail(items, zoomRootId) : []), [items, zoomRootId]);
@@ -1961,6 +1981,29 @@ export default function App() {
 
   const getCurrentItems = useCallback(() => applyDraftsToItems(items, drafts), [items, drafts]);
 
+  // 画面に実際に見えているテキストを集める。
+  // drafts は300msのdebounce越しなので、未フラッシュ分はcontenteditableのDOMから直接拾う。
+  // items/drafts と一致する行は触らない（＝リモート由来の正当な更新を潰さない）。
+  const collectLiveTexts = useCallback(() => {
+    const live = { ...draftsRef.current };
+    const committed = collectTextMap(itemsRef.current || []);
+    for (const [id, el] of inputRefs.current.entries()) {
+      if (!el || !el.isConnected) continue;
+      const base = id in live ? live[id] : committed.get(id);
+      if (base === undefined) continue;
+      // textarea（Zoomタイトル）は value、contenteditable は textContent が実体。
+      const domText = (el.tagName === "TEXTAREA" ? el.value : el.textContent) || "";
+      if (domText !== base) live[id] = domText;
+    }
+    return live;
+  }, []);
+
+  // 同期・書き出し用の「いま現在」のツリー。stale closure を避けるため必ずrefから読む。
+  const getLiveItems = useCallback(
+    () => applyDraftsToItems(itemsRef.current || [], collectLiveTexts()),
+    [collectLiveTexts]
+  );
+
   useEffect(() => {
     const payload = {
       items: getCurrentItems(),
@@ -2002,7 +2045,6 @@ export default function App() {
     };
   }, [isSelectingRows]);
 
-  useEffect(() => { itemsRef.current = items; }, [items]);
 
   // 選択ドラッグ中はブラウザのテキスト選択自動スクロールを抑制
   useEffect(() => {
@@ -2107,7 +2149,7 @@ export default function App() {
     if (autoSyncTimer.current) clearTimeout(autoSyncTimer.current);
     autoSyncTimer.current = setTimeout(() => {
       // smartSync (fetch→merge→push) prevents zombie resurrection from blind push
-      smartSync().catch((error) => appendLog("error", "Auto Sync failed", error.message));
+      smartSyncRef.current().catch((error) => appendLog("error", "Auto Sync failed", error.message));
     }, 10000);
     return () => clearTimeout(autoSyncTimer.current);
   }, [dirty, sync.autoSync, sync.supabaseUrl, sync.supabaseKey]);
@@ -2136,7 +2178,7 @@ export default function App() {
 
     (async () => {
       try {
-        await smartSync();
+        await smartSyncRef.current();
       } catch {
         setSyncStatus("local only");
       }
@@ -2149,7 +2191,7 @@ export default function App() {
     const onVisible = () => {
       if (document.visibilityState !== "visible") return;
       if (activeIdRef.current !== null) return; // 入力中はスキップ
-      smartSync().catch(() => {});
+      smartSyncRef.current().catch(() => {});
     };
     document.addEventListener("visibilitychange", onVisible);
     return () => document.removeEventListener("visibilitychange", onVisible);
@@ -2184,8 +2226,9 @@ export default function App() {
   const handleChange = useCallback((id, value) => {
     const nextValue = expandInlineCommands(value);
     setDrafts((prev) => ({ ...prev, [id]: nextValue }));
+    markChanged();
     if (!uiHiddenRef.current && !settingsOpenRef.current) setUiHidden(true);
-  }, []);
+  }, [markChanged]);
 
   const beginRowSelection = useCallback((event, id) => {
     if (isTouchPrimary && !touchSelectModeRef.current) return;
@@ -2679,31 +2722,32 @@ export default function App() {
   }, [activeId, drafts, mutateItems, zoomRootId]);
 
   const buildExportPayload = useCallback(() => {
-    const currentItems = getCurrentItems();
+    const currentItems = getLiveItems();
+    const s = settingsRef.current;
     return {
       schema: "quietliner.v1",
       appVersion: APP_VERSION,
       exportedAt: nowIso(),
-      version,
-      updatedAt,
+      version: versionRef.current,
+      updatedAt: updatedAtRef.current,
       items: currentItems,
       summary: summarizeItems(currentItems),
-      deletedIds: [...deletedIds].slice(-2000),
+      deletedIds: [...deletedIdsRef.current].slice(-2000),
       settings: {
-        theme: settings.theme,
-        font: settings.font,
-        fontSize: settings.fontSize,
-        lineHeight: settings.lineHeight,
-        letterSpacing: settings.letterSpacing,
-        textAlignment: settings.textAlignment,
-        bgLight: settings.bgLight,
-        textLight: settings.textLight,
-        bgDark: settings.bgDark,
-        textDark: settings.textDark,
-        rootTitle: settings.rootTitle,
+        theme: s.theme,
+        font: s.font,
+        fontSize: s.fontSize,
+        lineHeight: s.lineHeight,
+        letterSpacing: s.letterSpacing,
+        textAlignment: s.textAlignment,
+        bgLight: s.bgLight,
+        textLight: s.textLight,
+        bgDark: s.bgDark,
+        textDark: s.textDark,
+        rootTitle: s.rootTitle,
       },
     };
-  }, [getCurrentItems, deletedIds, settings, updatedAt, version]);
+  }, [getLiveItems]);
 
   async function supabaseHeaders(extra = {}) {
     const anonKey = sync.supabaseKey.trim();
@@ -2801,24 +2845,21 @@ export default function App() {
   function applyRemotePayload(payload, result = {}) {
     if (!payload || !Array.isArray(payload.items)) throw new Error("リモートの payload に items がありません");
     const remoteDeletedIds = new Set(payload.deletedIds || []);
-    const combinedDeletedIds = new Set([...deletedIds, ...remoteDeletedIds]);
+    const combinedDeletedIds = new Set([...deletedIdsRef.current, ...remoteDeletedIds]);
     if (remoteDeletedIds.size > 0) setDeletedIds(combinedDeletedIds);
     let safeItems = filterDeletedFromTree(dedupeTree(payload.items), combinedDeletedIds);
 
-    // タイピング中テキストをDOMから直接読んで保護する。
-    // drafts state はdebounce遅延で古い場合があるため、inputRefs経由で即時取得。
-    const liveTexts = { ...draftsRef.current };
+    // fetch中にもユーザーは打ち続けている。適用の直前にもう一度いまの表示テキストを拾い、
+    // マージ結果より優先して被せる（未フラッシュの入力を絶対に失わせない）。
     const currentActiveId = activeIdRef.current;
-    if (currentActiveId) {
-      const el = inputRefs.current.get(currentActiveId);
-      if (el) liveTexts[currentActiveId] = el.textContent || "";
-    }
+    const liveTexts = collectLiveTexts();
     if (Object.keys(liveTexts).length > 0) {
       safeItems = applyDraftsToItems(safeItems, liveTexts);
     }
 
-    setItems(safeItems.length ? safeItems : [makeNode("")]);
-    setVersion(Number(payload.version || result.remoteVersion || version + 1));
+    const appliedItems = safeItems.length ? safeItems : [makeNode("")];
+    setItems(appliedItems);
+    setVersion(Number(payload.version || result.remoteVersion || versionRef.current + 1));
     setUpdatedAt(payload.updatedAt || result.remoteUpdatedAt || nowIso());
     if (payload.settings) setSettings((prev) => ({ ...prev, ...payload.settings }));
     // 入力中ブロックのdraftは維持（カーソル・未確定文字を保護）
@@ -2826,6 +2867,8 @@ export default function App() {
     setZoomRootId((prev) => (prev && findPath(safeItems, prev) ? prev : null));
     setSelectedIds([]);
     setDirty(false);
+    // 画面に適用したそのものを返す。Push はこれを送る＝「見えている内容」と「送る内容」を一致させる。
+    return { ...payload, items: appliedItems, summary: summarizeItems(appliedItems) };
   }
 
   async function pullRemote(options = { apply: true }) {
@@ -2853,12 +2896,13 @@ export default function App() {
   async function smartSync() {
     setSyncStatus("syncing...");
     try {
-      const docId = sync.docId?.trim() || "main";
-      const localPayload = buildExportPayload();
-      const localSummary = summarizeItems(localPayload.items);
+      const docId = syncRef.current.docId?.trim() || "main";
 
       const rows = await supabaseRequest("GET", `/outlines?id=eq.${encodeURIComponent(docId)}&select=*`);
       const row = Array.isArray(rows) ? rows[0] : null;
+      // ローカル側は fetch を待ってから組む。先に組むと往復のあいだの入力が payload から漏れる。
+      const localPayload = buildExportPayload();
+      const localSummary = summarizeItems(localPayload.items);
       const remoteLooksEmpty = !row || !row.payload || !Array.isArray(row.payload.items) || row.payload.items.length === 0;
       const remoteSummary = row ? summarizeItems(row.payload?.items || []) : { nodeCount: 0, charCount: 0, isEffectivelyEmpty: true };
 
@@ -2900,8 +2944,8 @@ export default function App() {
 
       const remotePayload = row.payload;
       const mergedPayload = mergePayloads(localPayload, remotePayload);
-      applyRemotePayload(mergedPayload, { remoteVersion: mergedPayload.version, remoteUpdatedAt: mergedPayload.updatedAt });
-      await pushPayloadToRemote(mergedPayload, "smart-merge", { snapshotBefore: true });
+      const appliedPayload = applyRemotePayload(mergedPayload, { remoteVersion: mergedPayload.version, remoteUpdatedAt: mergedPayload.updatedAt });
+      await pushPayloadToRemote(appliedPayload, "smart-merge", { snapshotBefore: true });
       setSyncStatus("synced");
       setDirty(false);
       appendLog("info", "Smart Sync: マージして Push 完了", { localSummary, remoteSummary });
@@ -2912,6 +2956,9 @@ export default function App() {
       throw error;
     }
   }
+  // タイマー/イベントから呼ぶときは必ずこの ref 経由にする。
+  // 直接 smartSync を掴むと、登録した時点のレンダーの items/drafts で同期してしまう。
+  smartSyncRef.current = smartSync;
 
   async function forceReplaceRemote() {
     return pushRemote("force-replace", { force: true, snapshotBefore: true });
