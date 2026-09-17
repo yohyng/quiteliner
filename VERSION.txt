@@ -1,5 +1,5 @@
-Quietliner v5.9.17
-Build: Slide Over最適化 — 430px以下でgutter縮小・文字数バッジ非表示
+Quietliner v5.9.18
+Build: iOS バウンス時の白紙修正 — html/bodyの背景をアプリ背景色に同期
 
 
 

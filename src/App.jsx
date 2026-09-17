@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { supabase, isSupabaseEnabled } from "./lib/supabase";
 
-const APP_VERSION = "5.9.17";
+const APP_VERSION = "5.9.18";
 const APP_VERSION_LABEL = `Quietliner v${APP_VERSION}`;
 const isTouchPrimary = typeof window !== "undefined" && window.matchMedia("(pointer: coarse)").matches;
 const STORAGE_KEY = "quietliner.state.v4";
@@ -2110,6 +2110,17 @@ export default function App() {
   useEffect(() => {
     document.title = APP_VERSION_LABEL;
   }, []);
+
+  // iOS bounce scroll: body/htmlの背景をアプリ背景に合わせてバウンス時の白紙を防ぐ
+  useEffect(() => {
+    const bg = appBackground || (activeTheme === "dark" ? "#111111" : "#fbfaf7");
+    document.documentElement.style.background = bg;
+    document.body.style.background = bg;
+    return () => {
+      document.documentElement.style.background = "";
+      document.body.style.background = "";
+    };
+  }, [appBackground, activeTheme]);
 
   // 起動時サイレント Pull: GAS URL / Secret が設定済みなら一度だけ実行
   const startupPullRef = useRef(false);
