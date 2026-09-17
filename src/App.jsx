@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { supabase, isSupabaseEnabled } from "./lib/supabase";
 
-const APP_VERSION = "5.9.19";
+const APP_VERSION = "5.9.20";
 const APP_VERSION_LABEL = `Quietliner v${APP_VERSION}`;
 const isTouchPrimary = typeof window !== "undefined" && window.matchMedia("(pointer: coarse)").matches;
 const STORAGE_KEY = "quietliner.state.v4";
@@ -1752,7 +1752,6 @@ export default function App() {
   const settingsOpenRef = useRef(settingsOpen);
   const touchSelectModeRef = useRef(touchSelectMode);
   const activeIdRef = useRef(activeId);
-  const pendingRemoteRef = useRef(null); // applyRemotePayload deferred while editing
   draftsRef.current = drafts;
   uiHiddenRef.current = uiHidden;
   settingsOpenRef.current = settingsOpen;
@@ -2177,14 +2176,7 @@ export default function App() {
   const handleBlur = useCallback((id, text) => {
     commitDraft(id, text);
     setActiveId(null);
-    // Active Editing Lock: blur時に保留中のリモートデータを適用する
-    if (pendingRemoteRef.current) {
-      const { payload, result } = pendingRemoteRef.current;
-      pendingRemoteRef.current = null;
-      // 少し遅延させてcommitDraftのstate更新が完了してから適用
-      setTimeout(() => applyRemotePayloadNow(payload, result), 50);
-    }
-  }, [commitDraft]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [commitDraft]);
 
   const handleChange = useCallback((id, value) => {
     const nextValue = expandInlineCommands(value);
@@ -2805,35 +2797,29 @@ export default function App() {
 
   function applyRemotePayload(payload, result = {}) {
     if (!payload || !Array.isArray(payload.items)) throw new Error("リモートの payload に items がありません");
-    // Active Editing Lock: ユーザーが入力中は適用を保留し、idle後に適用する
-    if (activeIdRef.current !== null) {
-      pendingRemoteRef.current = { payload, result };
-      appendLog("info", "Sync: 入力中のため適用保留", { activeId: activeIdRef.current });
-      return;
-    }
-    applyRemotePayloadNow(payload, result);
-  }
-
-  function applyRemotePayloadNow(payload, result = {}) {
-    // Merge remote deletedIds into local so cross-device deletions propagate
     const remoteDeletedIds = new Set(payload.deletedIds || []);
     const combinedDeletedIds = new Set([...deletedIds, ...remoteDeletedIds]);
     if (remoteDeletedIds.size > 0) setDeletedIds(combinedDeletedIds);
-    // 既存の壊れたデータ（id重複）も読み込み時に必ず正規化する
     let safeItems = filterDeletedFromTree(dedupeTree(payload.items), combinedDeletedIds);
-    // 入力中のdraftを保護 — applyRemoteがタイピング中テキストを消さないよう上書き
-    const currentDrafts = draftsRef.current;
-    if (currentDrafts && Object.keys(currentDrafts).length > 0) {
-      safeItems = applyDraftsToItems(safeItems, currentDrafts);
+
+    // タイピング中テキストをDOMから直接読んで保護する。
+    // drafts state はdebounce遅延で古い場合があるため、inputRefs経由で即時取得。
+    const liveTexts = { ...draftsRef.current };
+    const currentActiveId = activeIdRef.current;
+    if (currentActiveId) {
+      const el = inputRefs.current.get(currentActiveId);
+      if (el) liveTexts[currentActiveId] = el.textContent || "";
     }
+    if (Object.keys(liveTexts).length > 0) {
+      safeItems = applyDraftsToItems(safeItems, liveTexts);
+    }
+
     setItems(safeItems.length ? safeItems : [makeNode("")]);
     setVersion(Number(payload.version || result.remoteVersion || version + 1));
     setUpdatedAt(payload.updatedAt || result.remoteUpdatedAt || nowIso());
     if (payload.settings) setSettings((prev) => ({ ...prev, ...payload.settings }));
-    // 編集中ブロックの未確定 draft は保持する（Sync の往復中に打った文字や
-    // カーソル位置が失われて「タイピングできない」状態になるのを防ぐ）。
-    setDrafts((prev) => (activeId && activeId in prev ? { [activeId]: prev[activeId] } : {}));
-    // ズーム中のノードが新しいツリーにまだ存在するなら、ズームは維持する。
+    // 入力中ブロックのdraftは維持（カーソル・未確定文字を保護）
+    setDrafts((prev) => (currentActiveId && currentActiveId in prev ? { [currentActiveId]: prev[currentActiveId] } : {}));
     setZoomRootId((prev) => (prev && findPath(safeItems, prev) ? prev : null));
     setSelectedIds([]);
     setDirty(false);
