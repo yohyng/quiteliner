@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { supabase, isSupabaseEnabled } from "./lib/supabase";
 
-const APP_VERSION = "5.9.18";
+const APP_VERSION = "5.9.19";
 const APP_VERSION_LABEL = `Quietliner v${APP_VERSION}`;
 const isTouchPrimary = typeof window !== "undefined" && window.matchMedia("(pointer: coarse)").matches;
 const STORAGE_KEY = "quietliner.state.v4";
@@ -1751,10 +1751,13 @@ export default function App() {
   const uiHiddenRef = useRef(uiHidden);
   const settingsOpenRef = useRef(settingsOpen);
   const touchSelectModeRef = useRef(touchSelectMode);
+  const activeIdRef = useRef(activeId);
+  const pendingRemoteRef = useRef(null); // applyRemotePayload deferred while editing
   draftsRef.current = drafts;
   uiHiddenRef.current = uiHidden;
   settingsOpenRef.current = settingsOpen;
   touchSelectModeRef.current = touchSelectMode;
+  activeIdRef.current = activeId;
 
   const zoomRootNode = useMemo(() => getNodeById(items, zoomRootId), [items, zoomRootId]);
   const zoomTrail = useMemo(() => (zoomRootId ? findTrail(items, zoomRootId) : []), [items, zoomRootId]);
@@ -2138,6 +2141,18 @@ export default function App() {
     })();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // D: Pull on focus — タブ/アプリが再びアクティブになったときにpull
+  useEffect(() => {
+    if (!sync.supabaseUrl.trim() || !sync.supabaseKey.trim()) return;
+    const onVisible = () => {
+      if (document.visibilityState !== "visible") return;
+      if (activeIdRef.current !== null) return; // 入力中はスキップ
+      smartSync().catch(() => {});
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
+  }, [sync.supabaseUrl, sync.supabaseKey]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const applyTextThen = useCallback((id, text, operation, focusId) => {
     pushHistory();
     setItems((prev) => {
@@ -2161,7 +2176,15 @@ export default function App() {
 
   const handleBlur = useCallback((id, text) => {
     commitDraft(id, text);
-  }, [commitDraft]);
+    setActiveId(null);
+    // Active Editing Lock: blur時に保留中のリモートデータを適用する
+    if (pendingRemoteRef.current) {
+      const { payload, result } = pendingRemoteRef.current;
+      pendingRemoteRef.current = null;
+      // 少し遅延させてcommitDraftのstate更新が完了してから適用
+      setTimeout(() => applyRemotePayloadNow(payload, result), 50);
+    }
+  }, [commitDraft]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleChange = useCallback((id, value) => {
     const nextValue = expandInlineCommands(value);
@@ -2782,6 +2805,16 @@ export default function App() {
 
   function applyRemotePayload(payload, result = {}) {
     if (!payload || !Array.isArray(payload.items)) throw new Error("リモートの payload に items がありません");
+    // Active Editing Lock: ユーザーが入力中は適用を保留し、idle後に適用する
+    if (activeIdRef.current !== null) {
+      pendingRemoteRef.current = { payload, result };
+      appendLog("info", "Sync: 入力中のため適用保留", { activeId: activeIdRef.current });
+      return;
+    }
+    applyRemotePayloadNow(payload, result);
+  }
+
+  function applyRemotePayloadNow(payload, result = {}) {
     // Merge remote deletedIds into local so cross-device deletions propagate
     const remoteDeletedIds = new Set(payload.deletedIds || []);
     const combinedDeletedIds = new Set([...deletedIds, ...remoteDeletedIds]);

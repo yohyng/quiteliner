@@ -1,5 +1,5 @@
-Quietliner v5.9.18
-Build: iOS バウンス時の白紙修正 — html/bodyの背景をアプリ背景色に同期
+Quietliner v5.9.19
+Build: スマートSyncシステム — Active Editing Lock + Pull on Focus
 
 
 
