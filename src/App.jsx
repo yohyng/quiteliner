@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { supabase, isSupabaseEnabled } from "./lib/supabase";
 
-const APP_VERSION = "5.9.20";
+const APP_VERSION = "5.9.21";
 const APP_VERSION_LABEL = `Quietliner v${APP_VERSION}`;
 const isTouchPrimary = typeof window !== "undefined" && window.matchMedia("(pointer: coarse)").matches;
 const STORAGE_KEY = "quietliner.state.v4";
@@ -1385,7 +1385,10 @@ function OutlineRow({
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // External node update (undo/redo, sync): imperatively update contenteditable
+  // isActiveの間はsync由来のsetItemsがあってもDOMを触らない。
+  // blurした瞬間にisActiveがfalseになり、そのときだけ外部変更を適用する。
   useEffect(() => {
+    if (isActive) return;
     const externalVal = node.text ?? "";
     const el = textareaRef.current;
     if (!el) return;
@@ -1393,7 +1396,7 @@ function OutlineRow({
       localValueRef.current = externalVal;
       el.textContent = externalVal;
     }
-  }, [node]);
+  }, [node, isActive]);
 
   // Cleanup timers on unmount
   useEffect(() => {

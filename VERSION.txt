@@ -1,5 +1,2 @@
-Quietliner v5.9.20
-Build: Sync時テキスト消失を根本修正 — DOMから直接タイピング中テキストを読んで保護
-
-
-
+Quietliner v5.9.21
+Build: タイピング中のDOMを保護 — isActive中はsync由来のuseEffectがDOMを触らない根本修正
