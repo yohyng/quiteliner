@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { supabase, isSupabaseEnabled } from "./lib/supabase";
 
-const APP_VERSION = "5.9.22";
+const APP_VERSION = "5.9.23";
 const APP_VERSION_LABEL = `Quietliner v${APP_VERSION}`;
 const isTouchPrimary = typeof window !== "undefined" && window.matchMedia("(pointer: coarse)").matches;
 const STORAGE_KEY = "quietliner.state.v4";
@@ -249,7 +249,14 @@ const DEFAULT_SETTINGS = {
   typewriterMode: false,
   typewriterAnchor: 0.72,
   favoriteTags: [],
+  // このデバイス専用の表示設定を使うか。settings に入れつつ同期対象から外すことで
+  // 自動的にデバイスごとの値になる（buildExportPayload の whitelist に載せない）。
+  deviceDisplaySettings: true,
 };
+
+// 画面サイズに依存する表示設定。deviceDisplaySettings が ON のあいだは
+// リモートから降ってきてもローカルの値を上書きしない。
+const DEVICE_DISPLAY_KEYS = ["theme", "font", "fontSize", "lineHeight", "letterSpacing", "textAlignment"];
 
 const DEFAULT_SYNC = {
   supabaseUrl: "",
@@ -2861,7 +2868,15 @@ export default function App() {
     setItems(appliedItems);
     setVersion(Number(payload.version || result.remoteVersion || versionRef.current + 1));
     setUpdatedAt(payload.updatedAt || result.remoteUpdatedAt || nowIso());
-    if (payload.settings) setSettings((prev) => ({ ...prev, ...payload.settings }));
+    if (payload.settings) {
+      setSettings((prev) => {
+        const incoming = { ...payload.settings };
+        if (prev.deviceDisplaySettings) {
+          for (const key of DEVICE_DISPLAY_KEYS) delete incoming[key];
+        }
+        return { ...prev, ...incoming };
+      });
+    }
     // 入力中ブロックのdraftは維持（カーソル・未確定文字を保護）
     setDrafts((prev) => (currentActiveId && currentActiveId in prev ? { [currentActiveId]: prev[currentActiveId] } : {}));
     setZoomRootId((prev) => (prev && findPath(safeItems, prev) ? prev : null));
@@ -3434,6 +3449,21 @@ export default function App() {
 
             {settingsTab === "appearance" && (
               <div className="settings-grid">
+                <label className="check-row has-hint wide">
+                  <input
+                    type="checkbox"
+                    checked={settings.deviceDisplaySettings !== false}
+                    onChange={(event) => setSettings((prev) => ({ ...prev, deviceDisplaySettings: event.target.checked }))}
+                  />
+                  <span>
+                    表示設定をこのデバイス専用にする
+                    <small>
+                      ON のあいだ Theme / Font / Font Size / Line Height / Letter Spacing / Text Alignment は
+                      同期で上書きされません。PCとiPadで別の文字サイズにできます。
+                      （Editor Width / Sidebar Width は元からこのデバイス専用です）
+                    </small>
+                  </span>
+                </label>
                 <label className="wide">
                   Root Title
                   <input value={settings.rootTitle || "All Notes"} onChange={(event) => setSettings((prev) => ({ ...prev, rootTitle: event.target.value }))} />

@@ -1,2 +1,2 @@
-Quietliner v5.9.22
-Build: 同期のstale closureを根絶 — 自動保存が10秒前のスナップショットで上書きしていた問題を修正
+Quietliner v5.9.23
+Build: 表示設定をデバイスごとに保持できるように — PCとiPadで別の文字サイズにできます

@@ -1335,6 +1335,21 @@ button {
   width: auto;
 }
 
+.check-row.has-hint {
+  align-items: flex-start;
+}
+
+.check-row.has-hint input {
+  margin-top: 2px;
+}
+
+.check-row small {
+  display: block;
+  margin-top: 4px;
+  opacity: 0.6;
+  line-height: 1.5;
+}
+
 .sync-state-card {
   display: grid;
   gap: 4px;
