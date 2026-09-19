@@ -1,2 +1,2 @@
-Quietliner v5.9.23
-Build: 表示設定をデバイスごとに保持できるように — PCとiPadで別の文字サイズにできます
+Quietliner v5.10.0
+Build: 保存アーキテクチャを刷新 — draftsを廃止してテキストの正解を1箇所に、同期を差分patch化

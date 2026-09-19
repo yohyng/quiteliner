@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { supabase, isSupabaseEnabled } from "./lib/supabase";
 
-const APP_VERSION = "5.9.23";
+const APP_VERSION = "5.10.0";
 const APP_VERSION_LABEL = `Quietliner v${APP_VERSION}`;
 const isTouchPrimary = typeof window !== "undefined" && window.matchMedia("(pointer: coarse)").matches;
 const STORAGE_KEY = "quietliner.state.v4";
@@ -538,9 +538,9 @@ function filterDeletedFromTree(items, deletedIds) {
     .map((node) => ({ ...node, children: filterDeletedFromTree(node.children || [], deletedIds) }));
 }
 
-function countChars(node, drafts = {}) {
-  const own = drafts[node.id] ?? node.text ?? "";
-  const childCount = (node.children || []).reduce((sum, child) => sum + countChars(child, drafts), 0);
+function countChars(node) {
+  const own = node.text ?? "";
+  const childCount = (node.children || []).reduce((sum, child) => sum + countChars(child), 0);
   return own.length + childCount;
 }
 
@@ -576,19 +576,47 @@ function collectTextMap(items, map = new Map()) {
   return map;
 }
 
-function applyDraftsToItems(items, drafts) {
-  const keys = Object.keys(drafts || {});
+function applyTextsToItems(items, texts) {
+  const keys = Object.keys(texts || {});
   if (!keys.length) return cloneItems(items);
   const root = cloneItems(items);
   keys.forEach((id) => {
     const path = findPath(root, id);
     if (path) {
       const node = getNodeByPath(root, path);
-      node.text = drafts[id];
+      node.text = texts[id];
       touchNode(node);
     }
   });
   return root;
+}
+
+// 同じ内容のノードは前回のオブジェクトをそのまま使い回す。
+// これで sync が全置換ではなく「変わった枝だけ差し替え」になり、
+// React.memo と OutlineRow の外部更新 effect が無関係な行で発火しなくなる。
+function sameOwnFields(a, b) {
+  const aKeys = Object.keys(a).filter((k) => k !== "children");
+  const bKeys = Object.keys(b).filter((k) => k !== "children");
+  if (aKeys.length !== bKeys.length) return false;
+  return aKeys.every((k) => Object.is(a[k], b[k]));
+}
+
+function reconcileTree(prevList = [], nextList = []) {
+  const prevById = new Map(prevList.map((node) => [node.id, node]));
+  let changed = prevList.length !== nextList.length;
+  const out = nextList.map((next, index) => {
+    const prev = prevById.get(next.id);
+    let merged = next;
+    if (prev) {
+      const prevChildren = prev.children || [];
+      const children = reconcileTree(prevChildren, next.children || []);
+      if (children === prevChildren && sameOwnFields(prev, next)) merged = prev;
+      else merged = { ...next, children };
+    }
+    if (merged !== prevList[index]) changed = true;
+    return merged;
+  });
+  return changed ? out : prevList;
 }
 
 function deleteNodeSafe(items, id) {
@@ -868,7 +896,7 @@ function mergeNodeLists(localList = [], remoteList = [], deletedIds = new Set())
     const localNode = localById.get(id);
     const remoteNode = remoteById.get(id);
     if (localNode && remoteNode) {
-      result.push(mergeNode(localNode, remoteNode));
+      result.push(mergeNode(localNode, remoteNode, deletedIds));
     } else if (localNode) {
       result.push(cloneNode(localNode));
     } else if (remoteNode) {
@@ -889,7 +917,7 @@ function mergeNodeLists(localList = [], remoteList = [], deletedIds = new Set())
   return result;
 }
 
-function mergeNode(localNode, remoteNode) {
+function mergeNode(localNode, remoteNode, deletedIds = new Set()) {
   const localTime = Date.parse(localNode?.updatedAt || "") || 0;
   const remoteTime = Date.parse(remoteNode?.updatedAt || "") || 0;
   const primary = localTime >= remoteTime ? localNode : remoteNode;
@@ -904,7 +932,7 @@ function mergeNode(localNode, remoteNode) {
     createdAt: primary?.createdAt || secondary?.createdAt || nowIso(),
     updatedAt: newestTimestamp(primary?.updatedAt, secondary?.updatedAt) || nowIso(),
     deletedAt: primary?.deletedAt || secondary?.deletedAt || null,
-    children: mergeNodeLists(localNode?.children || [], remoteNode?.children || []),
+    children: mergeNodeLists(localNode?.children || [], remoteNode?.children || [], deletedIds),
   };
 }
 
@@ -1245,7 +1273,6 @@ function OutlineRow({
   query,
   activeId,
   selected,
-  drafts,
   registerInput,
   onFocus,
   onBlur,
@@ -1274,13 +1301,13 @@ function OutlineRow({
   const [tagSuggest, setTagSuggest] = useState({ items: [], selIdx: 0 });
   const [hasSelection, setHasSelection] = useState(false);
   // Uncontrolled: current text lives in a ref, not React state
-  const localValueRef = useRef(drafts[node.id] ?? node.text ?? "");
+  const localValueRef = useRef(node.text ?? "");
   const flushTimerRef = useRef(null);
   const hasQuery = query.trim().length > 0;
   const isActive = activeId === node.id;
   const hasTags = extractTags(localValueRef.current).length > 0;
   const showMirror = hasQuery || hasTags;
-  const chars = countChars(node, drafts);
+  const chars = countChars(node);
   const hasChildren = Boolean(node.children?.length);
   const hasBody = hasStoredBody(node);
 
@@ -1628,7 +1655,6 @@ function areOutlineRowPropsEqual(prev, next) {
     prev.selected === next.selected &&
     prev.dragOver === next.dragOver &&
     prev.allTags === next.allTags &&
-    (prev.drafts[prev.node.id] ?? "") === (next.drafts[next.node.id] ?? "") &&
     prev.registerInput === next.registerInput &&
     prev.onFocus === next.onFocus &&
     prev.onBlur === next.onBlur &&
@@ -1656,7 +1682,6 @@ function ZoomTitleEditor({
   node,
   query,
   activeId,
-  drafts,
   registerInput,
   onFocus,
   onBlur,
@@ -1665,10 +1690,17 @@ function ZoomTitleEditor({
   onToggleFavorite,
 }) {
   const textareaRef = useRef(null);
-  const value = drafts[node.id] ?? node.text ?? "";
   const hasQuery = query.trim().length > 0;
   const isActive = activeId === node.id;
-  const chars = countChars(node, drafts);
+  const chars = countChars(node);
+  // 編集中は入力欄が実体。300msアイドルで items にコミットする（OutlineRowと同じ方式）。
+  const [value, setValue] = useState(node.text ?? "");
+  const flushTimerRef = useRef(null);
+  useEffect(() => {
+    if (isActive) return;
+    setValue(node.text ?? "");
+  }, [node, isActive]);
+  useEffect(() => () => clearTimeout(flushTimerRef.current), []);
 
   useEffect(() => {
     const el = textareaRef.current;
@@ -1699,8 +1731,16 @@ function ZoomTitleEditor({
           placeholder="Untitled"
           spellCheck={false}
           onFocus={() => onFocus(node.id, node.text ?? "")}
-          onBlur={() => onBlur(node.id)}
-          onChange={(event) => onChange(node.id, event.target.value)}
+          onBlur={() => {
+            clearTimeout(flushTimerRef.current);
+            onBlur(node.id, value);
+          }}
+          onChange={(event) => {
+            const next = event.target.value;
+            setValue(next);
+            clearTimeout(flushTimerRef.current);
+            flushTimerRef.current = setTimeout(() => onChange(node.id, next), 300);
+          }}
           onKeyDown={(event) => onKeyDown(event, node)}
         />
       </div>
@@ -1729,7 +1769,6 @@ export default function App() {
   const [settings, setSettings] = useState(initial.settings);
   const [sync, setSync] = useState(initial.sync);
   const [deletedIds, setDeletedIds] = useState(initial.deletedIds);
-  const [drafts, setDrafts] = useState({});
   const [activeId, setActiveId] = useState(null);
   const [query, setQuery] = useState("");
   const [uiHidden, setUiHidden] = useState(false);
@@ -1765,7 +1804,6 @@ export default function App() {
   const isUndoingRef = useRef(false);
   const itemsRef = useRef(items);
   // Stable refs updated every render so callbacks can read current values without deps
-  const draftsRef = useRef(drafts);
   const uiHiddenRef = useRef(uiHidden);
   const settingsOpenRef = useRef(settingsOpen);
   const touchSelectModeRef = useRef(touchSelectMode);
@@ -1777,7 +1815,6 @@ export default function App() {
   const syncRef = useRef(sync);
   const smartSyncRef = useRef(null);
   itemsRef.current = items;
-  draftsRef.current = drafts;
   uiHiddenRef.current = uiHidden;
   settingsOpenRef.current = settingsOpen;
   touchSelectModeRef.current = touchSelectMode;
@@ -1972,48 +2009,48 @@ export default function App() {
     if (focusId) focusNode(focusId);
   }, [focusNode, markChanged, pushHistory]);
 
-  const commitDraft = useCallback((id, explicitText) => {
+  // 入力欄の現在値。編集中の行だけ DOM が items より新しい（最大300ms）。
+  const readInputText = useCallback((id) => {
+    const el = inputRefs.current.get(id);
+    if (!el || !el.isConnected) return undefined;
+    // textarea（Zoomタイトル）は value、contenteditable は textContent が実体。
+    return (el.tagName === "TEXTAREA" ? el.value : el.textContent) || "";
+  }, []);
+
+  const commitText = useCallback((id, explicitText) => {
+    const text = explicitText ?? readInputText(id);
+    if (text == null) return;
     setItems((prev) => {
-      const text = explicitText ?? draftsRef.current[id];
-      if (text == null) return prev;
+      const node = getNodeById(prev, id);
+      if (!node || node.text === text) return prev;
       return updateNodeText(prev, id, text);
     });
-    setDrafts((prev) => {
-      const next = { ...prev };
-      delete next[id];
-      return next;
-    });
     markChanged();
-  }, [markChanged]);
+  }, [markChanged, readInputText]);
 
-  const getCurrentItems = useCallback(() => applyDraftsToItems(items, drafts), [items, drafts]);
-
-  // 画面に実際に見えているテキストを集める。
-  // drafts は300msのdebounce越しなので、未フラッシュ分はcontenteditableのDOMから直接拾う。
-  // items/drafts と一致する行は触らない（＝リモート由来の正当な更新を潰さない）。
+  // 画面に見えているテキストのうち、まだ items に入っていない分だけを集める。
+  // items と一致する行は触らない（＝リモート由来の正当な更新を潰さない）。
   const collectLiveTexts = useCallback(() => {
-    const live = { ...draftsRef.current };
+    const live = {};
     const committed = collectTextMap(itemsRef.current || []);
-    for (const [id, el] of inputRefs.current.entries()) {
-      if (!el || !el.isConnected) continue;
-      const base = id in live ? live[id] : committed.get(id);
+    for (const [id] of inputRefs.current.entries()) {
+      const base = committed.get(id);
       if (base === undefined) continue;
-      // textarea（Zoomタイトル）は value、contenteditable は textContent が実体。
-      const domText = (el.tagName === "TEXTAREA" ? el.value : el.textContent) || "";
-      if (domText !== base) live[id] = domText;
+      const domText = readInputText(id);
+      if (domText !== undefined && domText !== base) live[id] = domText;
     }
     return live;
-  }, []);
+  }, [readInputText]);
 
   // 同期・書き出し用の「いま現在」のツリー。stale closure を避けるため必ずrefから読む。
   const getLiveItems = useCallback(
-    () => applyDraftsToItems(itemsRef.current || [], collectLiveTexts()),
+    () => applyTextsToItems(itemsRef.current || [], collectLiveTexts()),
     [collectLiveTexts]
   );
 
   useEffect(() => {
     const payload = {
-      items: getCurrentItems(),
+      items: getLiveItems(),
       version,
       updatedAt,
       settings,
@@ -2021,7 +2058,7 @@ export default function App() {
       deletedIds: [...deletedIds].slice(-2000),
     };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
-  }, [getCurrentItems, version, updatedAt, settings, sync, deletedIds]);
+  }, [items, getLiveItems, version, updatedAt, settings, sync, deletedIds]);
 
   useEffect(() => {
     const onKey = (event) => {
@@ -2210,11 +2247,6 @@ export default function App() {
       const withText = updateNodeText(prev, id, text);
       return operation(withText);
     });
-    setDrafts((prev) => {
-      const next = { ...prev };
-      delete next[id];
-      return next;
-    });
     markChanged();
     if (focusId) focusNode(focusId);
   }, [focusNode, markChanged, pushHistory]);
@@ -2226,16 +2258,15 @@ export default function App() {
   }, []);
 
   const handleBlur = useCallback((id, text) => {
-    commitDraft(id, text);
+    commitText(id, text);
     setActiveId(null);
-  }, [commitDraft]);
+  }, [commitText]);
 
+  // OutlineRow から300msアイドルで届く。items が唯一の保存先。
   const handleChange = useCallback((id, value) => {
-    const nextValue = expandInlineCommands(value);
-    setDrafts((prev) => ({ ...prev, [id]: nextValue }));
-    markChanged();
+    commitText(id, expandInlineCommands(value));
     if (!uiHiddenRef.current && !settingsOpenRef.current) setUiHidden(true);
-  }, [markChanged]);
+  }, [commitText]);
 
   const beginRowSelection = useCallback((event, id) => {
     if (isTouchPrimary && !touchSelectModeRef.current) return;
@@ -2324,7 +2355,7 @@ export default function App() {
   const handleKeyDown = useCallback((event, node, currentText) => {
     if (isImeEvent(event)) return;
     const el = event.target;
-    if (currentText == null) currentText = draftsRef.current[node.id] ?? node.text ?? "";
+    if (currentText == null) currentText = readInputText(node.id) ?? node.text ?? "";
     const meta = event.ctrlKey || event.metaKey;
     const flat = visibleRows.map(({ node: rowNode }) => rowNode.id);
     const index = flat.indexOf(node.id);
@@ -2403,11 +2434,6 @@ export default function App() {
           setTimeout(() => focusNode(result.focusId), 0);
           return result.items;
         });
-        setDrafts((prev) => {
-          const next = { ...prev };
-          delete next[node.id];
-          return next;
-        });
         markChanged();
         return;
       }
@@ -2426,12 +2452,6 @@ export default function App() {
             const removed = removeNodeById(root, node.id);
             root = removed.items;
             return root.length ? root : [makeNode("")];
-          });
-          setDrafts((prev) => {
-            const nextDrafts = { ...prev };
-            delete nextDrafts[node.id];
-            delete nextDrafts[prevId];
-            return nextDrafts;
           });
           markChanged();
           setTimeout(() => focusNodeAtIndex(prevId, joinPos), 0);
@@ -2456,12 +2476,6 @@ export default function App() {
           const removed = removeNodeById(root, nextId);
           root = removed.items;
           return root.length ? root : [makeNode("")];
-        });
-        setDrafts((prev) => {
-          const nextDrafts = { ...prev };
-          delete nextDrafts[nextId];
-          delete nextDrafts[node.id];
-          return nextDrafts;
         });
         markChanged();
         setTimeout(() => focusNodeAtIndex(node.id, joinPos), 0);
@@ -2501,7 +2515,7 @@ export default function App() {
         const targetId = goPrev ? flat[index - 1] : flat[index + 1];
         if (!targetId) return;
         event.preventDefault();
-        commitDraft(node.id);
+        commitText(node.id);
         const targetEl = inputRefs.current.get(targetId);
         const x = nav ? nav.left : 0;
         const idx = targetEl ? getCECaretIndexForX(targetEl, goPrev ? "last" : "first", x) : undefined;
@@ -2512,7 +2526,7 @@ export default function App() {
         const prevId = flat[index - 1];
         if (!prevId) return;
         event.preventDefault();
-        commitDraft(node.id);
+        commitText(node.id);
         focusNode(prevId, "end");
         return;
       }
@@ -2520,15 +2534,15 @@ export default function App() {
         const nextId = flat[index + 1];
         if (!nextId) return;
         event.preventDefault();
-        commitDraft(node.id);
+        commitText(node.id);
         focusNode(nextId, "start");
       }
     }
-  }, [applyTextThen, commitDraft, focusNode, focusNodeAtIndex, markChanged, mutateItems, pushHistory, selectionAnchorId, setSelectedIds, setSelectionAnchorId, setActiveId, visibleRows]);
+  }, [applyTextThen, commitText, focusNode, focusNodeAtIndex, markChanged, mutateItems, pushHistory, selectionAnchorId, setSelectedIds, setSelectionAnchorId, setActiveId, visibleRows]);
 
   const handleZoomTitleKeyDown = useCallback((event, node) => {
     if (isImeEvent(event)) return;
-    const currentText = draftsRef.current[node.id] ?? node.text ?? "";
+    const currentText = readInputText(node.id) ?? node.text ?? "";
 
     if (event.key === "Enter") {
       if (event.shiftKey) {
@@ -2538,7 +2552,6 @@ export default function App() {
       event.preventDefault();
       const next = makeNode("");
       applyTextThen(node.id, currentText, (base) => insertChild(base, node.id, next), next.id);
-      setDrafts((prev) => ({ ...prev, [next.id]: "" }));
       return;
     }
 
@@ -2546,7 +2559,7 @@ export default function App() {
       const firstChildId = node.children?.[0]?.id;
       if (firstChildId) {
         event.preventDefault();
-        commitDraft(node.id);
+        commitText(node.id);
         focusNode(firstChildId);
       }
       return;
@@ -2557,7 +2570,7 @@ export default function App() {
       setUiHidden(false);
       setTimeout(() => document.querySelector(".search-input")?.focus(), 0);
     }
-  }, [applyTextThen, commitDraft, focusNode]);
+  }, [applyTextThen, commitText, focusNode]);
 
   const handleTextPointerDown = useCallback((id, startX, startY) => {
     if (isTouchPrimary) return; // touch uses scroll; select mode button instead
@@ -2607,7 +2620,6 @@ export default function App() {
       setTimeout(() => focusNode(result.focusId), 0);
       return result.items;
     });
-    setDrafts((prev) => { const next = { ...prev }; delete next[id]; return next; });
     markChanged();
   }, [focusNode, markChanged, pushHistory]);
 
@@ -2629,12 +2641,12 @@ export default function App() {
   }, [activeId, focusNode, mutateItems]);
 
   const zoomInto = useCallback((id) => {
-    if (!id || !findPath(getCurrentItems(), id)) return;
-    commitDraft(activeId);
+    if (!id || !findPath(itemsRef.current || [], id)) return;
+    commitText(activeId);
     setZoomRootId(id);
     setUiHidden(false);
     focusNode(id);
-  }, [activeId, commitDraft, focusNode, getCurrentItems]);
+  }, [activeId, commitText, focusNode]);
 
   const zoomOutAll = useCallback((focusId = null) => {
     setZoomRootId(null);
@@ -2707,7 +2719,7 @@ export default function App() {
   const addRootNode = useCallback(() => {
     const node = makeNode("");
     const currentActiveId = activeId;
-    const currentDraft = currentActiveId ? drafts[currentActiveId] : undefined;
+    const currentDraft = currentActiveId ? readInputText(currentActiveId) : undefined;
     mutateItems((prev) => {
       let base = prev;
       if (currentActiveId && currentDraft !== undefined) {
@@ -2725,8 +2737,7 @@ export default function App() {
       }
       return [...base, node];
     }, node.id);
-    setDrafts((prev) => ({ ...prev, [node.id]: "" }));
-  }, [activeId, drafts, mutateItems, zoomRootId]);
+  }, [activeId, mutateItems, readInputText, zoomRootId]);
 
   const buildExportPayload = useCallback(() => {
     const currentItems = getLiveItems();
@@ -2858,13 +2869,14 @@ export default function App() {
 
     // fetch中にもユーザーは打ち続けている。適用の直前にもう一度いまの表示テキストを拾い、
     // マージ結果より優先して被せる（未フラッシュの入力を絶対に失わせない）。
-    const currentActiveId = activeIdRef.current;
     const liveTexts = collectLiveTexts();
     if (Object.keys(liveTexts).length > 0) {
-      safeItems = applyDraftsToItems(safeItems, liveTexts);
+      safeItems = applyTextsToItems(safeItems, liveTexts);
     }
 
-    const appliedItems = safeItems.length ? safeItems : [makeNode("")];
+    // 全置換ではなく、内容が変わった枝だけ新しいオブジェクトにする。
+    // 変化のない行は同じ参照のままなので再レンダーも DOM 書き戻しも起きない。
+    const appliedItems = reconcileTree(itemsRef.current || [], safeItems.length ? safeItems : [makeNode("")]);
     setItems(appliedItems);
     setVersion(Number(payload.version || result.remoteVersion || versionRef.current + 1));
     setUpdatedAt(payload.updatedAt || result.remoteUpdatedAt || nowIso());
@@ -2877,9 +2889,7 @@ export default function App() {
         return { ...prev, ...incoming };
       });
     }
-    // 入力中ブロックのdraftは維持（カーソル・未確定文字を保護）
-    setDrafts((prev) => (currentActiveId && currentActiveId in prev ? { [currentActiveId]: prev[currentActiveId] } : {}));
-    setZoomRootId((prev) => (prev && findPath(safeItems, prev) ? prev : null));
+    setZoomRootId((prev) => (prev && findPath(appliedItems, prev) ? prev : null));
     setSelectedIds([]);
     setDirty(false);
     // 画面に適用したそのものを返す。Push はこれを送る＝「見えている内容」と「送る内容」を一致させる。
@@ -2972,7 +2982,7 @@ export default function App() {
     }
   }
   // タイマー/イベントから呼ぶときは必ずこの ref 経由にする。
-  // 直接 smartSync を掴むと、登録した時点のレンダーの items/drafts で同期してしまう。
+  // 直接 smartSync を掴むと、登録した時点のレンダーの items で同期してしまう。
   smartSyncRef.current = smartSync;
 
   async function forceReplaceRemote() {
@@ -3052,7 +3062,6 @@ export default function App() {
       });
     }
 
-    setDrafts({});
     setActiveId(null);
     setSelectedIds([]);
     setSelectionAnchorId(null);
@@ -3216,7 +3225,7 @@ export default function App() {
           {favorites.map((favorite) => (
             <button className="favorite-link" type="button" key={favorite.id} onClick={() => zoomInto(favorite.id)}>
               <span className="favorite-title">{favorite.text?.trim() || "Untitled"}</span>
-              <span className="favorite-meta">{countChars(favorite, drafts)}</span>
+              <span className="favorite-meta">{countChars(favorite)}</span>
             </button>
           ))}
         </div>
@@ -3358,7 +3367,6 @@ export default function App() {
                 node={zoomRootNode}
                 query={query}
                 activeId={activeId}
-                drafts={drafts}
                 registerInput={registerInput}
                 onFocus={handleFocus}
                 onBlur={handleBlur}
@@ -3391,7 +3399,6 @@ export default function App() {
                 query={query}
                 activeId={activeId}
                 selected={selectedIdSet.has(node.id)}
-                drafts={drafts}
                 registerInput={registerInput}
                 onFocus={handleFocus}
                 onBlur={handleBlur}
