@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { supabase, isSupabaseEnabled } from "./lib/supabase";
 
-const APP_VERSION = "5.10.0";
+const APP_VERSION = "5.10.1";
 const APP_VERSION_LABEL = `Quietliner v${APP_VERSION}`;
 const isTouchPrimary = typeof window !== "undefined" && window.matchMedia("(pointer: coarse)").matches;
 const STORAGE_KEY = "quietliner.state.v4";
@@ -257,6 +257,34 @@ const DEFAULT_SETTINGS = {
 // 画面サイズに依存する表示設定。deviceDisplaySettings が ON のあいだは
 // リモートから降ってきてもローカルの値を上書きしない。
 const DEVICE_DISPLAY_KEYS = ["theme", "font", "fontSize", "lineHeight", "letterSpacing", "textAlignment"];
+
+const HISTORY_LIMIT = 100;
+
+// ツリーの形だけを表す文字列。テキストの変更か構造の変更かの判定に使う。
+function treeSignature(items) {
+  const parts = [];
+  const walk = (nodes, depth) => {
+    for (const node of nodes || []) {
+      parts.push(`${depth}:${node.id}`);
+      walk(node.children, depth + 1);
+    }
+  };
+  walk(items, 0);
+  return parts.join(",");
+}
+
+// 形＋テキスト。履歴に同じ状態を二重に積まないための比較に使う。
+function contentSignature(items) {
+  const parts = [];
+  const walk = (nodes, depth) => {
+    for (const node of nodes || []) {
+      parts.push(`${depth}:${node.id}:${node.text ?? ""}`);
+      walk(node.children, depth + 1);
+    }
+  };
+  walk(items, 0);
+  return parts.join("\n");
+}
 
 const DEFAULT_SYNC = {
   supabaseUrl: "",
@@ -566,14 +594,6 @@ function getHashtagAtCursor(text, cursorPos) {
   const m = before.match(/#([^\s#.,!?。、！？]*)$/);
   if (!m) return null;
   return { start: m.index, query: m[1].toLowerCase() };
-}
-
-function collectTextMap(items, map = new Map()) {
-  for (const node of items || []) {
-    map.set(node.id, node.text ?? "");
-    if (node.children?.length) collectTextMap(node.children, map);
-  }
-  return map;
 }
 
 function applyTextsToItems(items, texts) {
@@ -1273,6 +1293,7 @@ function OutlineRow({
   query,
   activeId,
   selected,
+  restoreToken,
   registerInput,
   onFocus,
   onBlur,
@@ -1426,19 +1447,23 @@ function OutlineRow({
     if (el) el.textContent = localValueRef.current;
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // External node update (undo/redo, sync): imperatively update contenteditable
-  // isActiveの間はsync由来のsetItemsがあってもDOMを触らない。
-  // blurした瞬間にisActiveがfalseになり、そのときだけ外部変更を適用する。
+  // 外部からの変更を contenteditable に反映する。
+  // sync 由来の setItems は編集中のDOMを壊すので isActive の間は無視する。
+  // ただし undo/redo はローカルの明示操作なので、restoreToken の変化で強制的に適用する。
+  const lastRestoreTokenRef = useRef(restoreToken);
   useEffect(() => {
-    if (isActive) return;
+    const forced = restoreToken !== lastRestoreTokenRef.current;
+    lastRestoreTokenRef.current = restoreToken;
+    if (isActive && !forced) return;
     const externalVal = node.text ?? "";
     const el = textareaRef.current;
     if (!el) return;
     if (externalVal !== localValueRef.current) {
       localValueRef.current = externalVal;
       el.textContent = externalVal;
+      if (forced && isActive) setCECursor(el, externalVal.length);
     }
-  }, [node, isActive]);
+  }, [node, isActive, restoreToken]);
 
   // Cleanup timers on unmount
   useEffect(() => {
@@ -1652,6 +1677,7 @@ function areOutlineRowPropsEqual(prev, next) {
     prev.depth === next.depth &&
     prev.query === next.query &&
     prev.activeId === next.activeId &&
+    prev.restoreToken === next.restoreToken &&
     prev.selected === next.selected &&
     prev.dragOver === next.dragOver &&
     prev.allTags === next.allTags &&
@@ -1682,6 +1708,7 @@ function ZoomTitleEditor({
   node,
   query,
   activeId,
+  restoreToken,
   registerInput,
   onFocus,
   onBlur,
@@ -1696,10 +1723,13 @@ function ZoomTitleEditor({
   // 編集中は入力欄が実体。300msアイドルで items にコミットする（OutlineRowと同じ方式）。
   const [value, setValue] = useState(node.text ?? "");
   const flushTimerRef = useRef(null);
+  const lastRestoreTokenRef = useRef(restoreToken);
   useEffect(() => {
-    if (isActive) return;
+    const forced = restoreToken !== lastRestoreTokenRef.current;
+    lastRestoreTokenRef.current = restoreToken;
+    if (isActive && !forced) return;
     setValue(node.text ?? "");
-  }, [node, isActive]);
+  }, [node, isActive, restoreToken]);
   useEffect(() => () => clearTimeout(flushTimerRef.current), []);
 
   useEffect(() => {
@@ -1778,6 +1808,8 @@ export default function App() {
   const [syncLog, setSyncLog] = useState([]);
   const [dirty, setDirty] = useState(false);
   const [historyVersion, setHistoryVersion] = useState(0);
+  // undo/redo のたびに変わる。編集中の行にもDOM反映を強制するための合図。
+  const [restoreToken, setRestoreToken] = useState(0);
   const [zoomRootId, setZoomRootId] = useState(null);
   const [selectedIds, setSelectedIds] = useState([]);
   const [selectionAnchorId, setSelectionAnchorId] = useState(null);
@@ -1801,7 +1833,9 @@ export default function App() {
   const textDragAnchorRef = useRef(null);
   const historyRef = useRef([]);
   const historyIndexRef = useRef(-1);
-  const isUndoingRef = useRef(false);
+  const skipHistoryRef = useRef(false);
+  const historyTimerRef = useRef(null);
+  const lastRecordedRef = useRef(null);
   const itemsRef = useRef(items);
   // Stable refs updated every render so callbacks can read current values without deps
   const uiHiddenRef = useRef(uiHidden);
@@ -1956,24 +1990,61 @@ export default function App() {
     setDirty(true);
   }, []);
 
-  const pushHistory = useCallback(() => {
-    if (isUndoingRef.current) return;
-    const snapshot = JSON.parse(JSON.stringify(itemsRef.current || []));
-    const idx = historyIndexRef.current;
-    const sliced = historyRef.current.slice(0, idx + 1);
-    if (sliced.length && JSON.stringify(sliced[sliced.length - 1]) === JSON.stringify(snapshot)) return;
+  // 履歴は「変更後の状態」を積む。history[index] === いまの items を常に保つのが要点で、
+  // これが崩れていたせいで redo が最新に戻れず、1手目では undo が押せなかった。
+  const recordHistory = useCallback((snapshotItems) => {
+    clearTimeout(historyTimerRef.current);
+    historyTimerRef.current = null;
+    const source = snapshotItems || [];
+    lastRecordedRef.current = source;
+    const snapshot = cloneItems(source);
+    const sliced = historyRef.current.slice(0, historyIndexRef.current + 1);
+    // 同じ内容を二重に積むと undo が空振りする
+    if (sliced.length && contentSignature(sliced[sliced.length - 1]) === contentSignature(snapshot)) return;
     sliced.push(snapshot);
-    if (sliced.length > 50) sliced.shift();
+    if (sliced.length > HISTORY_LIMIT) sliced.shift();
     historyRef.current = sliced;
-    historyIndexRef.current = historyRef.current.length - 1;
+    historyIndexRef.current = sliced.length - 1;
     setHistoryVersion((v) => v + 1);
   }, []);
 
+  // 連続タイプは1手にまとめたいので、テキストだけの変更は500msコアレスする。
+  // 未確定のぶんが残ったまま undo されると redo で戻れなくなるので、先に確定させる。
+  const flushPendingHistory = useCallback(() => {
+    if (!historyTimerRef.current) return;
+    clearTimeout(historyTimerRef.current);
+    historyTimerRef.current = null;
+    recordHistory(itemsRef.current);
+  }, [recordHistory]);
+
+  useEffect(() => {
+    if (skipHistoryRef.current) { skipHistoryRef.current = false; return; }
+    if (historyIndexRef.current < 0) {
+      historyRef.current = [cloneItems(items)];
+      historyIndexRef.current = 0;
+      lastRecordedRef.current = items;
+      setHistoryVersion((v) => v + 1);
+      return;
+    }
+    if (lastRecordedRef.current === items) return;
+    const last = historyRef.current[historyIndexRef.current];
+    clearTimeout(historyTimerRef.current);
+    if (treeSignature(last) !== treeSignature(items)) {
+      recordHistory(items);
+    } else {
+      historyTimerRef.current = setTimeout(() => {
+        historyTimerRef.current = null;
+        recordHistory(itemsRef.current);
+      }, 500);
+    }
+  }, [items, recordHistory]);
+
   const undo = useCallback(() => {
+    flushPendingHistory();
     if (historyIndexRef.current <= 0) return;
     historyIndexRef.current--;
-    isUndoingRef.current = true;
-    const restored = JSON.parse(JSON.stringify(historyRef.current[historyIndexRef.current]));
+    skipHistoryRef.current = true;
+    const restored = cloneItems(historyRef.current[historyIndexRef.current]);
     setItems(restored);
     // Remove restored node IDs from deletedIds so they don't get re-deleted on next sync
     setDeletedIds((prev) => {
@@ -1985,29 +2056,28 @@ export default function App() {
     });
     markChanged();
     setHistoryVersion((v) => v + 1);
-    setTimeout(() => { isUndoingRef.current = false; }, 0);
-  }, [markChanged]);
+    setRestoreToken((v) => v + 1);
+  }, [flushPendingHistory, markChanged]);
 
   const redo = useCallback(() => {
+    flushPendingHistory();
     if (historyIndexRef.current >= historyRef.current.length - 1) return;
     historyIndexRef.current++;
-    isUndoingRef.current = true;
-    const restored = JSON.parse(JSON.stringify(historyRef.current[historyIndexRef.current]));
-    setItems(restored);
+    skipHistoryRef.current = true;
+    setItems(cloneItems(historyRef.current[historyIndexRef.current]));
     markChanged();
     setHistoryVersion((v) => v + 1);
-    setTimeout(() => { isUndoingRef.current = false; }, 0);
-  }, [markChanged]);
+    setRestoreToken((v) => v + 1);
+  }, [flushPendingHistory, markChanged]);
 
   const mutateItems = useCallback((updater, focusId = null) => {
-    pushHistory();
     setItems((prev) => {
       const next = updater(prev);
       return Array.isArray(next) && next.length ? next : [makeNode("")];
     });
     markChanged();
     if (focusId) focusNode(focusId);
-  }, [focusNode, markChanged, pushHistory]);
+  }, [focusNode, markChanged]);
 
   // 入力欄の現在値。編集中の行だけ DOM が items より新しい（最大300ms）。
   const readInputText = useCallback((id) => {
@@ -2028,18 +2098,18 @@ export default function App() {
     markChanged();
   }, [markChanged, readInputText]);
 
-  // 画面に見えているテキストのうち、まだ items に入っていない分だけを集める。
-  // items と一致する行は触らない（＝リモート由来の正当な更新を潰さない）。
+  // items より新しいテキストを持ちうるのはフォーカス中の行だけ。
+  // 非フォーカス行は blur 時の commitText で必ず確定済みなので、DOMを見る必要がない。
+  // 全行を見ると undo 直後の「まだ再レンダーされていないDOM」を未確定入力と誤認し、
+  // 戻したはずの内容を書き戻してしまう。
   const collectLiveTexts = useCallback(() => {
-    const live = {};
-    const committed = collectTextMap(itemsRef.current || []);
-    for (const [id] of inputRefs.current.entries()) {
-      const base = committed.get(id);
-      if (base === undefined) continue;
-      const domText = readInputText(id);
-      if (domText !== undefined && domText !== base) live[id] = domText;
-    }
-    return live;
+    const id = activeIdRef.current;
+    if (!id) return {};
+    const domText = readInputText(id);
+    if (domText === undefined) return {};
+    const committed = getNodeById(itemsRef.current || [], id)?.text;
+    if (committed === undefined || committed === domText) return {};
+    return { [id]: domText };
   }, [readInputText]);
 
   // 同期・書き出し用の「いま現在」のツリー。stale closure を避けるため必ずrefから読む。
@@ -2242,14 +2312,13 @@ export default function App() {
   }, [sync.supabaseUrl, sync.supabaseKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const applyTextThen = useCallback((id, text, operation, focusId) => {
-    pushHistory();
     setItems((prev) => {
       const withText = updateNodeText(prev, id, text);
       return operation(withText);
     });
     markChanged();
     if (focusId) focusNode(focusId);
-  }, [focusNode, markChanged, pushHistory]);
+  }, [focusNode, markChanged]);
 
   const handleFocus = useCallback((id) => {
     setActiveId(id);
@@ -2260,6 +2329,9 @@ export default function App() {
   const handleBlur = useCallback((id, text) => {
     commitText(id, text);
     setActiveId(null);
+    // 入力をやめたらUIを戻す。タッチ端末にはホバーが無く、top-hot-zone だけだと
+    // 隠れたまま戻せずツールバー（undo/redo）が押せなくなる。
+    setUiHidden(false);
   }, [commitText]);
 
   // OutlineRow から300msアイドルで届く。items が唯一の保存先。
@@ -2423,8 +2495,7 @@ export default function App() {
       // them into the block's position rather than being thrown away.
       if (currentText.length === 0) {
         event.preventDefault();
-        pushHistory();
-        const bsIds = collectNodeIds(itemsRef.current || [], node.id);
+            const bsIds = collectNodeIds(itemsRef.current || [], node.id);
         setDeletedIds((prev) => { const next = new Set(prev); bsIds.forEach((i) => next.add(i)); return next; });
         setItems((prev) => {
           const withText = updateNodeText(prev, node.id, "");
@@ -2446,8 +2517,7 @@ export default function App() {
           event.preventDefault();
           const prevText = prevEl.tagName === "TEXTAREA" ? prevEl.value : (prevEl.textContent || "");
           const joinPos = prevText.length;
-          pushHistory();
-          setItems((prev) => {
+                setItems((prev) => {
             let root = updateNodeText(prev, prevId, prevText + currentText);
             const removed = removeNodeById(root, node.id);
             root = removed.items;
@@ -2470,8 +2540,7 @@ export default function App() {
         const nextEl = inputRefs.current.get(nextId);
         const nextText = (nextEl ? (nextEl.tagName === "TEXTAREA" ? nextEl.value : nextEl.textContent) : null) ?? nextNode.text ?? "";
         const joinPos = currentText.length;
-        pushHistory();
-        setItems((prev) => {
+            setItems((prev) => {
           let root = updateNodeText(prev, node.id, currentText + nextText);
           const removed = removeNodeById(root, nextId);
           root = removed.items;
@@ -2538,7 +2607,7 @@ export default function App() {
         focusNode(nextId, "start");
       }
     }
-  }, [applyTextThen, commitText, focusNode, focusNodeAtIndex, markChanged, mutateItems, pushHistory, selectionAnchorId, setSelectedIds, setSelectionAnchorId, setActiveId, visibleRows]);
+  }, [applyTextThen, commitText, focusNode, focusNodeAtIndex, markChanged, mutateItems, selectionAnchorId, setSelectedIds, setSelectionAnchorId, setActiveId, visibleRows]);
 
   const handleZoomTitleKeyDown = useCallback((event, node) => {
     if (isImeEvent(event)) return;
@@ -2608,7 +2677,6 @@ export default function App() {
   }, [mutateItems]);
 
   const deleteNode = useCallback((id) => {
-    pushHistory();
     const ids = collectNodeIds(itemsRef.current || [], id);
     setDeletedIds((prev) => { const next = new Set(prev); ids.forEach((i) => next.add(i)); return next; });
     setItems((prev) => {
@@ -2621,7 +2689,7 @@ export default function App() {
       return result.items;
     });
     markChanged();
-  }, [focusNode, markChanged, pushHistory]);
+  }, [focusNode, markChanged]);
 
   const toggleCollapse = useCallback((id) => {
     // 折りたたむとき、フォーカスが子孫にあれば折りたたみ元へ戻す
@@ -2675,7 +2743,6 @@ export default function App() {
 
   const deleteSelected = useCallback(() => {
     if (!selectedIds.length) return;
-    pushHistory();
     const current = itemsRef.current || [];
     const ids = selectedIds.flatMap((id) => collectNodeIds(current, id));
     setDeletedIds((prev) => { const next = new Set(prev); ids.forEach((i) => next.add(i)); return next; });
@@ -2688,11 +2755,10 @@ export default function App() {
     });
     setSelectedIds([]);
     markChanged();
-  }, [selectedIds, pushHistory, markChanged]);
+  }, [selectedIds, markChanged]);
 
   const indentSelected = useCallback(() => {
     if (!selectedIds.length) return;
-    pushHistory();
     setItems((prev) => {
       let result = prev;
       for (const id of selectedIds) {
@@ -2701,11 +2767,10 @@ export default function App() {
       return result;
     });
     markChanged();
-  }, [selectedIds, pushHistory, markChanged]);
+  }, [selectedIds, markChanged]);
 
   const dedentSelected = useCallback(() => {
     if (!selectedIds.length) return;
-    pushHistory();
     setItems((prev) => {
       let result = prev;
       for (const id of [...selectedIds].reverse()) {
@@ -2714,7 +2779,7 @@ export default function App() {
       return result;
     });
     markChanged();
-  }, [selectedIds, pushHistory, markChanged]);
+  }, [selectedIds, markChanged]);
 
   const addRootNode = useCallback(() => {
     const node = makeNode("");
@@ -3181,7 +3246,11 @@ export default function App() {
 
   return (
     <div className={`app theme-${activeTheme} ${uiHidden ? "ui-hidden" : ""} ${settings.sidebarCollapsed ? "sidebar-collapsed" : ""} ${isSelectingRows ? "is-selecting" : ""} ${settings.typewriterMode ? "typewriter-mode" : ""} ${touchSelectMode ? "touch-select-mode" : ""}`} style={appStyle} data-bg-style={settings.backgroundStyle || "solid"} data-noise-style={settings.backgroundNoise || "mixed"}>
-      <div className="top-hot-zone" onMouseEnter={() => setUiHidden(false)} />
+      <div
+        className="top-hot-zone"
+        onMouseEnter={() => setUiHidden(false)}
+        onPointerDown={() => setUiHidden(false)}
+      />
 
       {!settings.sidebarCollapsed && !uiHidden && (
         <div
@@ -3367,6 +3436,7 @@ export default function App() {
                 node={zoomRootNode}
                 query={query}
                 activeId={activeId}
+                restoreToken={restoreToken}
                 registerInput={registerInput}
                 onFocus={handleFocus}
                 onBlur={handleBlur}
@@ -3398,6 +3468,7 @@ export default function App() {
                 depth={depth}
                 query={query}
                 activeId={activeId}
+                restoreToken={restoreToken}
                 selected={selectedIdSet.has(node.id)}
                 registerInput={registerInput}
                 onFocus={handleFocus}
