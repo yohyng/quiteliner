@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { supabase, isSupabaseEnabled } from "./lib/supabase";
 
-const APP_VERSION = "5.10.1";
+const APP_VERSION = "5.10.2";
 const APP_VERSION_LABEL = `Quietliner v${APP_VERSION}`;
 const isTouchPrimary = typeof window !== "undefined" && window.matchMedia("(pointer: coarse)").matches;
 const STORAGE_KEY = "quietliner.state.v4";
@@ -896,44 +896,45 @@ function dedupeTree(items, seen = new Set()) {
   return out;
 }
 
+// 並び順はローカルを基準にする。
+// リモート順を基準にすると、まだサーバーに無いノード（＝いま書いている段落）が
+// 毎回まとめて末尾へ追い出され、自動保存のたびに文章が飛ぶ。
+// リモートにしか無いノードは、リモート上での直前の共通ノードの後ろへ差し込む。
 function mergeNodeLists(localList = [], remoteList = [], deletedIds = new Set()) {
-  const result = [];
-  const used = new Set();
-  const localById = new Map((localList || []).map((node) => [node.id, node]));
-  const remoteById = new Map((remoteList || []).map((node) => [node.id, node]));
+  const locals = (localList || []).filter((node) => node?.id);
+  const remotes = (remoteList || []).filter((node) => node?.id);
+  const localById = new Map(locals.map((node) => [node.id, node]));
+  const remoteById = new Map(remotes.map((node) => [node.id, node]));
+
   const orderedIds = [];
+  const seen = new Set();
+  for (const node of locals) {
+    if (seen.has(node.id)) continue;
+    seen.add(node.id);
+    orderedIds.push(node.id);
+  }
 
-  (remoteList || []).forEach((node) => {
-    if (node?.id && !orderedIds.includes(node.id)) orderedIds.push(node.id);
-  });
-  (localList || []).forEach((node) => {
-    if (node?.id && !orderedIds.includes(node.id)) orderedIds.push(node.id);
-  });
+  let anchor = -1; // orderedIds 内での「直前の共通ノード」の位置
+  for (const node of remotes) {
+    if (seen.has(node.id)) {
+      const at = orderedIds.indexOf(node.id);
+      if (at >= 0) anchor = at;
+      continue;
+    }
+    seen.add(node.id);
+    anchor += 1;
+    orderedIds.splice(anchor, 0, node.id);
+  }
 
-  orderedIds.forEach((id) => {
-    // Skip nodes that were explicitly deleted on either side
-    if (deletedIds.has(id)) { used.add(id); return; }
+  const result = [];
+  for (const id of orderedIds) {
+    if (deletedIds.has(id)) continue;
     const localNode = localById.get(id);
     const remoteNode = remoteById.get(id);
-    if (localNode && remoteNode) {
-      result.push(mergeNode(localNode, remoteNode, deletedIds));
-    } else if (localNode) {
-      result.push(cloneNode(localNode));
-    } else if (remoteNode) {
-      result.push(cloneNode(remoteNode));
-    }
-    used.add(id);
-  });
-
-  (localList || []).forEach((node) => {
-    if (!node?.id || used.has(node.id)) return;
-    result.push(cloneNode(node));
-  });
-  (remoteList || []).forEach((node) => {
-    if (!node?.id || used.has(node.id)) return;
-    result.push(cloneNode(node));
-  });
-
+    if (localNode && remoteNode) result.push(mergeNode(localNode, remoteNode, deletedIds));
+    else if (localNode) result.push(cloneNode(localNode));
+    else if (remoteNode) result.push(cloneNode(remoteNode));
+  }
   return result;
 }
 
