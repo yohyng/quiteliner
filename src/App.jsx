@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { supabase, isSupabaseEnabled } from "./lib/supabase";
 
-const APP_VERSION = "5.10.2";
+const APP_VERSION = "5.10.3";
 const APP_VERSION_LABEL = `Quietliner v${APP_VERSION}`;
 const isTouchPrimary = typeof window !== "undefined" && window.matchMedia("(pointer: coarse)").matches;
 const STORAGE_KEY = "quietliner.state.v4";
@@ -896,11 +896,14 @@ function dedupeTree(items, seen = new Set()) {
   return out;
 }
 
-// 並び順はローカルを基準にする。
+// 並び順も階層もローカルを基準にする。
 // リモート順を基準にすると、まだサーバーに無いノード（＝いま書いている段落）が
 // 毎回まとめて末尾へ追い出され、自動保存のたびに文章が飛ぶ。
+// また localIdsAll に載っているノードはローカルのどこかに既に居るので、
+// リモート側の古い親の下に生やし直さない。これをやると Shift+Tab の直後に
+// 自動保存が走ったときインデントが元に戻ってしまう。
 // リモートにしか無いノードは、リモート上での直前の共通ノードの後ろへ差し込む。
-function mergeNodeLists(localList = [], remoteList = [], deletedIds = new Set()) {
+function mergeNodeLists(localList = [], remoteList = [], deletedIds = new Set(), localIdsAll = null) {
   const locals = (localList || []).filter((node) => node?.id);
   const remotes = (remoteList || []).filter((node) => node?.id);
   const localById = new Map(locals.map((node) => [node.id, node]));
@@ -921,6 +924,8 @@ function mergeNodeLists(localList = [], remoteList = [], deletedIds = new Set())
       if (at >= 0) anchor = at;
       continue;
     }
+    // ローカルツリーの別の場所に居るなら、そちらの配置を正とする
+    if (localIdsAll?.has(node.id)) continue;
     seen.add(node.id);
     anchor += 1;
     orderedIds.splice(anchor, 0, node.id);
@@ -931,14 +936,19 @@ function mergeNodeLists(localList = [], remoteList = [], deletedIds = new Set())
     if (deletedIds.has(id)) continue;
     const localNode = localById.get(id);
     const remoteNode = remoteById.get(id);
-    if (localNode && remoteNode) result.push(mergeNode(localNode, remoteNode, deletedIds));
+    if (localNode && remoteNode) result.push(mergeNode(localNode, remoteNode, deletedIds, localIdsAll));
     else if (localNode) result.push(cloneNode(localNode));
-    else if (remoteNode) result.push(cloneNode(remoteNode));
+    else if (remoteNode) {
+      // リモートにしか無いノードを取り込むが、その子孫のうちローカルに居るものは連れてこない
+      const cloned = cloneNode(remoteNode);
+      if (localIdsAll?.size) cloned.children = filterDeletedFromTree(cloned.children || [], localIdsAll);
+      result.push(cloned);
+    }
   }
   return result;
 }
 
-function mergeNode(localNode, remoteNode, deletedIds = new Set()) {
+function mergeNode(localNode, remoteNode, deletedIds = new Set(), localIdsAll = null) {
   const localTime = Date.parse(localNode?.updatedAt || "") || 0;
   const remoteTime = Date.parse(remoteNode?.updatedAt || "") || 0;
   const primary = localTime >= remoteTime ? localNode : remoteNode;
@@ -953,7 +963,7 @@ function mergeNode(localNode, remoteNode, deletedIds = new Set()) {
     createdAt: primary?.createdAt || secondary?.createdAt || nowIso(),
     updatedAt: newestTimestamp(primary?.updatedAt, secondary?.updatedAt) || nowIso(),
     deletedAt: primary?.deletedAt || secondary?.deletedAt || null,
-    children: mergeNodeLists(localNode?.children || [], remoteNode?.children || [], deletedIds),
+    children: mergeNodeLists(localNode?.children || [], remoteNode?.children || [], deletedIds, localIdsAll),
   };
 }
 
@@ -965,7 +975,7 @@ function mergePayloads(localPayload, remotePayload) {
     ...(localPayload?.deletedIds || []),
     ...(remotePayload?.deletedIds || []),
   ]);
-  const mergedItems = dedupeTree(mergeNodeLists(localItems, remoteItems, mergedDeletedIds));
+  const mergedItems = dedupeTree(mergeNodeLists(localItems, remoteItems, mergedDeletedIds, collectAllIds(localItems)));
   const mergedSettings = {
     ...(remotePayload?.settings || {}),
     ...(localPayload?.settings || {}),
