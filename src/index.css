@@ -818,18 +818,22 @@ button {
   background: color-mix(in srgb, var(--app-text) 55%, transparent);
 }
 
-/* 掴んでいるブロックと、連れていく子ブロック */
-.outline-row[data-dragging="true"] {
-  opacity: 0.9;
+/* この中に入る、という行。並列で入る場合は光らない */
+.outline-row[data-drop-parent="true"] {
+  background: color-mix(in srgb, var(--app-text) 7%, transparent);
+  border-radius: 10px;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--app-text) 16%, transparent);
 }
 
-.outline-row[data-dragging="true"] .text-shell {
-  background: color-mix(in srgb, var(--app-text) 8%, transparent);
-  border-radius: 8px;
-}
-
-.outline-row[data-drag-subtree="true"] {
-  opacity: 0.45;
+/* 掴んだブロックと連れていく子を、1枚の持ち上がったカードとして描く */
+.drag-card {
+  position: absolute;
+  right: 8px;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--app-text) 10%, var(--app-bg));
+  box-shadow: 0 12px 28px color-mix(in srgb, var(--app-text) 22%, transparent);
+  pointer-events: none;
+  z-index: 0;
 }
 
 .is-dragging-row,

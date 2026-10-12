@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { supabase, isSupabaseEnabled } from "./lib/supabase";
 
-const APP_VERSION = "5.11.0";
+const APP_VERSION = "5.11.1";
 const APP_VERSION_LABEL = `Quietliner v${APP_VERSION}`;
 const isTouchPrimary = typeof window !== "undefined" && window.matchMedia("(pointer: coarse)").matches;
 const STORAGE_KEY = "quietliner.state.v4";
@@ -1320,6 +1320,7 @@ function OutlineRow({
   consumeDragClick,
   dragging,
   dragSubtree,
+  dropParent,
   allTags,
 }) {
   const textareaRef = useRef(null);
@@ -1486,6 +1487,7 @@ function OutlineRow({
       data-selecting={isActive && hasSelection ? "true" : "false"}
       data-selected={selected ? "true" : "false"}
       data-completed={node.completed ? "true" : "false"}
+      data-drop-parent={dropParent ? "true" : undefined}
       data-dragging={dragging ? "true" : undefined}
       data-drag-subtree={dragSubtree ? "true" : undefined}
       data-heading={node.headingLevel || ""}
@@ -1685,6 +1687,7 @@ function areOutlineRowPropsEqual(prev, next) {
     prev.selected === next.selected &&
     prev.dragging === next.dragging &&
     prev.dragSubtree === next.dragSubtree &&
+    prev.dropParent === next.dropParent &&
     prev.allTags === next.allTags &&
     prev.registerInput === next.registerInput &&
     prev.onFocus === next.onFocus &&
@@ -2395,6 +2398,29 @@ export default function App() {
     return { unit, gutter };
   }, []);
 
+  const measureRows = useCallback((session) => {
+    const listRect = session.listEl.getBoundingClientRect();
+    const rows = [];
+    let cardTop = null;
+    let cardBottom = null;
+    for (const row of displayRowsRef.current || []) {
+      const el = inputRefs.current.get(row.node.id)?.closest?.(".outline-row");
+      if (!el) continue;
+      const rect = el.getBoundingClientRect();
+      const top = rect.top - listRect.top;
+      if (row.node.id === session.id || session.subtreeIds.has(row.node.id)) {
+        // 掴んだブロックとその子。まとめて1枚のカードとして描く
+        if (cardTop === null || top < cardTop) cardTop = top;
+        if (cardBottom === null || top + rect.height > cardBottom) cardBottom = top + rect.height;
+        continue;
+      }
+      rows.push({ id: row.node.id, depth: row.depth, top, height: rect.height });
+    }
+    session.rows = rows;
+    session.card = cardTop === null ? null : { top: cardTop, height: cardBottom - cardTop, depth: session.startDepth };
+    return session.card;
+  }, []);
+
   const computeDrop = useCallback((clientX, clientY) => {
     const session = dragSessionRef.current;
     if (!session) return null;
@@ -2413,12 +2439,46 @@ export default function App() {
     const raw = session.startDepth + Math.round((clientX - session.startX) / session.unit);
     const depth = Math.max(Math.min(minDepth, maxDepth), Math.min(maxDepth, Math.max(minDepth, raw)));
     const top = prev ? prev.top + prev.height : 0;
-    return { prevId: prev?.id ?? null, depth, top };
+    const prevDepth = prev?.depth ?? -1;
+    // 直前の行より深い段＝その行の中に入る。同じかそれより浅い＝並列。
+    const parentId = prev && depth > prevDepth ? prev.id : null;
+    return { prevId: prev?.id ?? null, prevDepth, depth, top, parentId };
   }, []);
+
+  // 畳まれたブロックの中に入れようとしている間は、そのブロックを開く。
+  // 開かないままだと何の中に入るのか見えないため（Finderのスプリングフォルダと同じ）。
+  const springOpen = useCallback((id) => {
+    const session = dragSessionRef.current;
+    if (!session) return;
+    skipHistoryRef.current = true; // ドラッグの副作用なので undo の1手にはしない
+    setItems((prev) => updateNodePatch(prev, id, { collapsed: false }));
+    requestAnimationFrame(() => {
+      const live = dragSessionRef.current;
+      if (!live) return;
+      const card = measureRows(live);
+      setDragging({ id: live.id, subtree: live.subtreeIds, card });
+      const next = computeDrop(live.lastX, live.lastY);
+      live.drop = next;
+      setDropHint(next);
+    });
+  }, [computeDrop, measureRows]);
+
+  const updateSpring = useCallback((drop) => {
+    const session = dragSessionRef.current;
+    if (!session) return;
+    const target = drop?.parentId || null;
+    const node = target ? getNodeById(itemsRef.current || [], target) : null;
+    const candidate = node?.collapsed && node.children?.length ? target : null;
+    if (candidate === session.springId) return;
+    session.springId = candidate;
+    clearTimeout(session.springTimer);
+    if (candidate) session.springTimer = setTimeout(() => springOpen(candidate), 450);
+  }, [springOpen]);
 
   const endDrag = useCallback((commit) => {
     const session = dragSessionRef.current;
     dragSessionRef.current = null;
+    clearTimeout(session?.springTimer);
     cancelAnimationFrame(autoScrollRef.current);
     autoScrollRef.current = 0;
     document.body.classList.remove("is-dragging-row");
@@ -2442,7 +2502,7 @@ export default function App() {
       if (dx < 5 && dy < 5) return;
       session.moved = true;
       document.body.classList.add("is-dragging-row");
-      setDragging({ id: session.id, subtree: session.subtreeIds });
+      setDragging({ id: session.id, subtree: session.subtreeIds, card: session.card });
     }
     event.preventDefault();
 
@@ -2451,6 +2511,7 @@ export default function App() {
     const drop = computeDrop(event.clientX, event.clientY);
     session.drop = drop;
     setDropHint(drop);
+    updateSpring(drop);
 
     // 画面端では自動スクロール（ドラッグ中は指でスクロールできないため）
     const margin = 90;
@@ -2468,11 +2529,12 @@ export default function App() {
         const next = computeDrop(live.lastX, live.lastY);
         live.drop = next;
         setDropHint(next);
+        updateSpring(next);
         autoScrollRef.current = requestAnimationFrame(tick);
       };
       autoScrollRef.current = requestAnimationFrame(tick);
     }
-  }, [computeDrop]);
+  }, [computeDrop, updateSpring]);
 
   const handleRowPointerUp = useCallback((event) => {
     const session = dragSessionRef.current;
@@ -2490,25 +2552,17 @@ export default function App() {
     const subtreeIds = collectAllIds(node.children || []);
     const startDepth = (displayRowsRef.current || []).find((r) => r.node.id === id)?.depth ?? 0;
     const { unit, gutter } = readIndentMetrics();
-    const listRect = listEl.getBoundingClientRect();
-    const rows = [];
-    for (const row of displayRowsRef.current || []) {
-      if (row.node.id === id || subtreeIds.has(row.node.id)) continue;
-      const el = inputRefs.current.get(row.node.id)?.closest?.(".outline-row");
-      if (!el) continue;
-      const rect = el.getBoundingClientRect();
-      rows.push({ id: row.node.id, depth: row.depth, top: rect.top - listRect.top, height: rect.height });
-    }
-
     dragSessionRef.current = {
-      id, subtreeIds, rows, listEl, unit, gutter, startDepth,
+      id, subtreeIds, rows: [], listEl, unit, gutter, startDepth,
+      springId: null, springTimer: 0,
       pointerId: event.pointerId, captureEl: event.currentTarget,
       startX: event.clientX, startY: event.clientY,
       lastX: event.clientX, lastY: event.clientY,
       moved: false, drop: null, scrollSpeed: 0,
     };
+    measureRows(dragSessionRef.current);
     try { event.currentTarget.setPointerCapture(event.pointerId); } catch { /* noop */ }
-  }, [readIndentMetrics]);
+  }, [measureRows, readIndentMetrics]);
 
   // ドラッグ直後のクリックでズームしてしまわないように握りつぶす
   const consumeDragClick = useCallback(() => {
@@ -3548,6 +3602,16 @@ export default function App() {
           </div>
 
           <div className="outline-list" ref={outlineListRef}>
+            {dragging?.card && (
+              <div
+                className="drag-card"
+                style={{
+                  top: `${dragging.card.top}px`,
+                  height: `${dragging.card.height}px`,
+                  left: `calc(${dragging.card.depth} * var(--indent-unit) + var(--gutter-base) - 34px)`,
+                }}
+              />
+            )}
             {dropHint && (
               <div
                 className="drop-indicator"
@@ -3590,6 +3654,7 @@ export default function App() {
                 onRowPointerMove={handleRowPointerMove}
                 onRowPointerUp={handleRowPointerUp}
                 consumeDragClick={consumeDragClick}
+                dropParent={dropHint?.parentId === node.id}
                 dragging={dragging?.id === node.id}
                 dragSubtree={Boolean(dragging && dragging.subtree.has(node.id))}
                 allTags={allTags}
