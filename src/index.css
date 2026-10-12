@@ -31,6 +31,9 @@ button {
 }
 
 .app {
+  /* ドラッグ中のインデント判定でJSからも読む。ここが唯一の定義。 */
+  --indent-unit: 28px;
+  --gutter-base: 82px;
   min-height: 100vh;
   display: grid;
   grid-template-columns: var(--sidebar-width, 252px) 10px minmax(0, 1fr);
@@ -789,11 +792,60 @@ button {
   display: flex;
   flex-direction: column;
   gap: 2px;
+  position: relative;
+}
+
+/* ドラッグ中の挿入位置インジケータ。left がそのまま着地するインデント段 */
+.drop-indicator {
+  position: absolute;
+  height: 2px;
+  right: 8px;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--app-text) 55%, transparent);
+  pointer-events: none;
+  z-index: 3;
+  transform: translateY(-1px);
+}
+
+.drop-indicator::before {
+  content: '';
+  position: absolute;
+  left: -5px;
+  top: -3px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--app-text) 55%, transparent);
+}
+
+/* 掴んでいるブロックと、連れていく子ブロック */
+.outline-row[data-dragging="true"] {
+  opacity: 0.9;
+}
+
+.outline-row[data-dragging="true"] .text-shell {
+  background: color-mix(in srgb, var(--app-text) 8%, transparent);
+  border-radius: 8px;
+}
+
+.outline-row[data-drag-subtree="true"] {
+  opacity: 0.45;
+}
+
+.is-dragging-row,
+.is-dragging-row * {
+  cursor: grabbing !important;
+  user-select: none !important;
+}
+
+.zoom-dot-button {
+  touch-action: none;
+  -webkit-touch-callout: none;
 }
 
 .outline-row {
   display: grid;
-  grid-template-columns: calc(var(--depth) * 28px + 64px) minmax(0, 1fr) auto;
+  grid-template-columns: calc(var(--depth) * var(--indent-unit) + var(--gutter-base)) minmax(0, 1fr) auto;
   align-items: start;
   min-height: 34px;
   border-radius: 12px;
@@ -1437,6 +1489,8 @@ kbd {
 }
 
 @media (max-width: 1023px) {
+  .app { --indent-unit: 20px; --gutter-base: 72px; }
+
   .app {
     grid-template-columns: 1fr;
   }
@@ -1492,10 +1546,6 @@ kbd {
     width: 100%;
     max-width: var(--editor-max-width, 920px);
     padding: 76px 16px 96px;
-  }
-
-  .outline-row {
-    grid-template-columns: calc(var(--depth) * 20px + 56px) minmax(0, 1fr) auto;
   }
 
   .zoom-title-editor {
@@ -1586,9 +1636,6 @@ kbd {
 }
 
 /* v4.9.0 additions */
-.outline-row {
-  grid-template-columns: calc(var(--depth) * 28px + 82px) minmax(0, 1fr) auto;
-}
 
 .row-gutter {
   gap: 1px;
@@ -1646,9 +1693,6 @@ kbd {
 }
 
 @media (max-width: 1023px) {
-  .outline-row {
-    grid-template-columns: calc(var(--depth) * 20px + 72px) minmax(0, 1fr) auto;
-  }
   .outline-row::before {
     left: 30px;
     width: max(0px, calc(var(--depth, 0) * 20px - 19px));
@@ -2358,13 +2402,13 @@ html {
 
 /* ── Slide Over / very narrow (≤ 430px) ───────────────────── */
 @media (max-width: 430px) {
+  .app { --indent-unit: 16px; --gutter-base: 44px; }
+
   .editor-wrap {
     padding: 64px 10px 80px;
   }
 
-  .outline-row {
-    grid-template-columns: calc(var(--depth) * 16px + 44px) minmax(0, 1fr) auto;
-  }
+
 
   .outline-row::before {
     left: 22px;

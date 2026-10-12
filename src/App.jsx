@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { supabase, isSupabaseEnabled } from "./lib/supabase";
 
-const APP_VERSION = "5.10.3";
+const APP_VERSION = "5.11.0";
 const APP_VERSION_LABEL = `Quietliner v${APP_VERSION}`;
 const isTouchPrimary = typeof window !== "undefined" && window.matchMedia("(pointer: coarse)").matches;
 const STORAGE_KEY = "quietliner.state.v4";
@@ -1055,40 +1055,34 @@ function removeNodeById(items, id) {
   return { items: root, node };
 }
 
-function isDescendantPath(sourcePath, targetPath) {
-  if (!sourcePath || !targetPath) return false;
-  if (targetPath.length <= sourcePath.length) return false;
-  return sourcePath.every((value, index) => targetPath[index] === value);
-}
+// ドラッグ用。ノードを「直前に見えている行」の次へ、指定の深さで差し込む。
+// 子ブロックは node.children にぶら下がったまま動くので、まとめて移動する。
+function moveSubtreeTo(items, dragId, prevVisibleId, targetDepth) {
+  const { items: without, node } = removeNodeById(items, dragId);
+  if (!node) return items;
+  if (!prevVisibleId) return [node, ...without];
 
-function moveNode(items, draggedId, targetId, mode = "after") {
-  if (!draggedId || !targetId || draggedId === targetId) return items;
-  const original = cloneItems(items);
-  const sourcePath = findPath(original, draggedId);
-  const targetPath = findPath(original, targetId);
-  if (!sourcePath || !targetPath || isDescendantPath(sourcePath, targetPath)) return original;
+  const prevPath = findPath(without, prevVisibleId);
+  if (!prevPath) return [...without, node];
+  const prevDepth = prevPath.length - 1;
 
-  const removed = removeNodeById(original, draggedId);
-  if (!removed.node) return original;
-  const root = removed.items;
-  const freshTargetPath = findPath(root, targetId);
-  if (!freshTargetPath) return original;
-
-  if (mode === "child") {
-    const target = getNodeByPath(root, freshTargetPath);
-    target.children = target.children || [];
-    target.children.unshift(removed.node);
-    target.collapsed = false;
-    touchNode(target);
-    return root;
+  if (targetDepth > prevDepth) {
+    const parent = getNodeByPath(without, prevPath);
+    parent.collapsed = false;
+    parent.children = parent.children || [];
+    parent.children.unshift(node);
+    touchNode(parent);
+    return without;
   }
 
-  const list = getListByParentPath(root, freshTargetPath.slice(0, -1));
-  const targetIndex = freshTargetPath[freshTargetPath.length - 1];
-  const insertIndex = mode === "before" ? targetIndex : targetIndex + 1;
-  list.splice(insertIndex, 0, removed.node);
-  return root;
+  // 直前の行の祖先をたどって targetDepth の段まで上がり、その直後に置く
+  const anchorPath = prevPath.slice(0, targetDepth + 1);
+  const list = getListByParentPath(without, anchorPath.slice(0, -1));
+  list.splice(anchorPath[anchorPath.length - 1] + 1, 0, node);
+  return without;
 }
+
+
 
 function normalizeImportPayload(parsed) {
   const items = extractImportItems(parsed);
@@ -1320,11 +1314,12 @@ function OutlineRow({
   onEnterSelect,
   onTextPointerDown,
   onShiftClick,
-  onDragStartRow,
-  onDragOverRow,
-  onDropRow,
-  onDragEndRow,
-  dragOver,
+  onRowPointerDown,
+  onRowPointerMove,
+  onRowPointerUp,
+  consumeDragClick,
+  dragging,
+  dragSubtree,
   allTags,
 }) {
   const textareaRef = useRef(null);
@@ -1491,7 +1486,8 @@ function OutlineRow({
       data-selecting={isActive && hasSelection ? "true" : "false"}
       data-selected={selected ? "true" : "false"}
       data-completed={node.completed ? "true" : "false"}
-      data-drag-over={dragOver || ""}
+      data-dragging={dragging ? "true" : undefined}
+      data-drag-subtree={dragSubtree ? "true" : undefined}
       data-heading={node.headingLevel || ""}
       data-text-color={node.textColor ? "true" : "false"}
       data-bg-color={node.bgColor ? "true" : "false"}
@@ -1501,9 +1497,6 @@ function OutlineRow({
         ...(node.bgColor ? { "--node-bg-color": node.bgColor } : {}),
       }}
       onPointerEnter={() => onEnterSelect(node.id)}
-      onDragOver={(event) => onDragOverRow(event, node.id)}
-      onDrop={(event) => onDropRow(event, node.id)}
-      onDragEnd={onDragEndRow}
     >
       <div className="row-gutter">
         <button
@@ -1518,13 +1511,13 @@ function OutlineRow({
         <button
           className={`zoom-dot-button ${hasBody ? "has-body" : ""}`}
           type="button"
-          draggable
           aria-label="Zoom / Drag to move"
           title="クリックでズーム、ドラッグで移動"
-          onMouseDown={(event) => event.preventDefault()}
-          onClick={() => onZoom(node.id)}
-          onDragStart={(event) => onDragStartRow(event, node.id)}
-          onDragEnd={onDragEndRow}
+          onPointerDown={(event) => { event.preventDefault(); onRowPointerDown(event, node.id); }}
+          onPointerMove={onRowPointerMove}
+          onPointerUp={onRowPointerUp}
+          onPointerCancel={onRowPointerUp}
+          onClick={() => { if (!consumeDragClick()) onZoom(node.id); }}
         >
           <span />
         </button>
@@ -1690,7 +1683,8 @@ function areOutlineRowPropsEqual(prev, next) {
     prev.activeId === next.activeId &&
     prev.restoreToken === next.restoreToken &&
     prev.selected === next.selected &&
-    prev.dragOver === next.dragOver &&
+    prev.dragging === next.dragging &&
+    prev.dragSubtree === next.dragSubtree &&
     prev.allTags === next.allTags &&
     prev.registerInput === next.registerInput &&
     prev.onFocus === next.onFocus &&
@@ -1707,10 +1701,9 @@ function areOutlineRowPropsEqual(prev, next) {
     prev.onEnterSelect === next.onEnterSelect &&
     prev.onTextPointerDown === next.onTextPointerDown &&
     prev.onShiftClick === next.onShiftClick &&
-    prev.onDragStartRow === next.onDragStartRow &&
-    prev.onDragOverRow === next.onDragOverRow &&
-    prev.onDropRow === next.onDropRow &&
-    prev.onDragEndRow === next.onDragEndRow
+    prev.onRowPointerDown === next.onRowPointerDown &&
+    prev.onRowPointerMove === next.onRowPointerMove &&
+    prev.onRowPointerUp === next.onRowPointerUp
   );
 }
 const MemoOutlineRow = React.memo(OutlineRow, areOutlineRowPropsEqual);
@@ -1825,8 +1818,8 @@ export default function App() {
   const [selectedIds, setSelectedIds] = useState([]);
   const [selectionAnchorId, setSelectionAnchorId] = useState(null);
   const [isSelectingRows, setIsSelectingRows] = useState(false);
-  const [draggingId, setDraggingId] = useState(null);
-  const [dragOverState, setDragOverState] = useState(null);
+  const [dragging, setDragging] = useState(null);   // { id, subtree:Set }
+  const [dropHint, setDropHint] = useState(null);   // { prevId, depth, top }
   const [importText, setImportText] = useState("");
   const [importStatus, setImportStatus] = useState("");
   const [importMode, setImportMode] = useState("append");
@@ -1859,6 +1852,8 @@ export default function App() {
   const settingsRef = useRef(settings);
   const syncRef = useRef(sync);
   const smartSyncRef = useRef(null);
+  const outlineListRef = useRef(null);
+  const displayRowsRef = useRef([]);
   itemsRef.current = items;
   uiHiddenRef.current = uiHidden;
   settingsOpenRef.current = settingsOpen;
@@ -1893,6 +1888,7 @@ export default function App() {
     const tag = trimmed.slice(1).toLowerCase();
     return visibleRows.filter(({ node }) => extractTags(node.text).includes(tag));
   }, [visibleRows, query]);
+  displayRowsRef.current = displayRows;
   const zoomTitle = zoomRootNode ? getReadableTitle(zoomRootNode) : rootTitle;
   const activeTheme = settings.theme === "dark" ? "dark" : "light";
   // historyVersion ticks on every push/undo/redo so canUndo/canRedo stay in sync
@@ -2385,55 +2381,140 @@ export default function App() {
     setSelectedIds(visibleIds.slice(from, to + 1));
   }, [isSelectingRows, selectionAnchorId, visibleIds]);
 
-  const getDropMode = useCallback((event) => {
-    const rect = event.currentTarget.getBoundingClientRect();
-    const y = event.clientY - rect.top;
-    if (event.shiftKey || event.clientX - rect.left > rect.width * 0.34) return "child";
-    if (y < rect.height * 0.35) return "before";
-    if (y > rect.height * 0.65) return "after";
-    return "after";
+  // --- ブロックのドラッグ移動（WorkFlowy方式） ---------------------------
+  // HTML5のdrag&dropはタッチで動かないので Pointer Events で組む。
+  // 縦方向で挿入位置、横方向でインデント段を決め、子ブロックは丸ごと連れていく。
+  const dragSessionRef = useRef(null);
+  const autoScrollRef = useRef(0);
+
+  const readIndentMetrics = useCallback(() => {
+    const appEl = document.querySelector(".app");
+    const cs = appEl ? getComputedStyle(appEl) : null;
+    const unit = parseFloat(cs?.getPropertyValue("--indent-unit") || "") || 28;
+    const gutter = parseFloat(cs?.getPropertyValue("--gutter-base") || "") || 82;
+    return { unit, gutter };
   }, []);
 
-  const handleDragStartRow = useCallback((event, id) => {
-    event.stopPropagation();
-    setDraggingId(id);
-    setDragOverState(null);
-    setSelectedIds([id]);
-    try {
-      event.dataTransfer.effectAllowed = "move";
-      event.dataTransfer.setData("text/plain", id);
-    } catch {
-      // noop
+  const computeDrop = useCallback((clientX, clientY) => {
+    const session = dragSessionRef.current;
+    if (!session) return null;
+    const listRect = session.listEl.getBoundingClientRect();
+    const y = clientY - listRect.top;
+
+    const rows = session.rows;
+    let i = 0;
+    while (i < rows.length && y > rows[i].top + rows[i].height / 2) i += 1;
+    const prev = rows[i - 1] || null;
+    const next = rows[i] || null;
+
+    const maxDepth = prev ? prev.depth + 1 : 0;
+    const minDepth = next ? next.depth : 0;
+    // 掴んだ位置からの横移動量でインデント段を決める（1段＝1インデント幅）
+    const raw = session.startDepth + Math.round((clientX - session.startX) / session.unit);
+    const depth = Math.max(Math.min(minDepth, maxDepth), Math.min(maxDepth, Math.max(minDepth, raw)));
+    const top = prev ? prev.top + prev.height : 0;
+    return { prevId: prev?.id ?? null, depth, top };
+  }, []);
+
+  const endDrag = useCallback((commit) => {
+    const session = dragSessionRef.current;
+    dragSessionRef.current = null;
+    cancelAnimationFrame(autoScrollRef.current);
+    autoScrollRef.current = 0;
+    document.body.classList.remove("is-dragging-row");
+    setDragging(null);
+    setDropHint(null);
+    if (!session) return;
+    try { session.captureEl?.releasePointerCapture?.(session.pointerId); } catch { /* noop */ }
+    if (commit && session.moved && session.drop) {
+      const { prevId, depth } = session.drop;
+      mutateItems((prev) => moveSubtreeTo(prev, session.id, prevId, depth), session.id);
     }
-  }, []);
+  }, [mutateItems]);
 
-  const handleDragOverRow = useCallback((event, id) => {
-    if (!draggingId || draggingId === id) return;
-    event.preventDefault();
-    const mode = getDropMode(event);
-    setDragOverState({ id, mode });
-    try {
-      event.dataTransfer.dropEffect = "move";
-    } catch {
-      // noop
+  const handleRowPointerMove = useCallback((event) => {
+    const session = dragSessionRef.current;
+    if (!session || event.pointerId !== session.pointerId) return;
+
+    if (!session.moved) {
+      const dx = Math.abs(event.clientX - session.startX);
+      const dy = Math.abs(event.clientY - session.startY);
+      if (dx < 5 && dy < 5) return;
+      session.moved = true;
+      document.body.classList.add("is-dragging-row");
+      setDragging({ id: session.id, subtree: session.subtreeIds });
     }
-  }, [draggingId, getDropMode]);
-
-  const handleDropRow = useCallback((event, id) => {
-    if (!draggingId || draggingId === id) return;
     event.preventDefault();
-    event.stopPropagation();
-    const mode = dragOverState?.id === id ? dragOverState.mode : getDropMode(event);
-    mutateItems((prev) => moveNode(prev, draggingId, id, mode), draggingId);
-    setDraggingId(null);
-    setDragOverState(null);
-  }, [dragOverState, draggingId, getDropMode, mutateItems]);
 
-  const handleDragEndRow = useCallback(() => {
-    setDraggingId(null);
-    setDragOverState(null);
+    session.lastX = event.clientX;
+    session.lastY = event.clientY;
+    const drop = computeDrop(event.clientX, event.clientY);
+    session.drop = drop;
+    setDropHint(drop);
+
+    // 画面端では自動スクロール（ドラッグ中は指でスクロールできないため）
+    const margin = 90;
+    const speed = event.clientY < margin
+      ? -Math.ceil((margin - event.clientY) / 6)
+      : event.clientY > window.innerHeight - margin
+        ? Math.ceil((event.clientY - (window.innerHeight - margin)) / 6)
+        : 0;
+    session.scrollSpeed = speed;
+    if (speed !== 0 && !autoScrollRef.current) {
+      const tick = () => {
+        const live = dragSessionRef.current;
+        if (!live || !live.scrollSpeed) { autoScrollRef.current = 0; return; }
+        window.scrollBy(0, live.scrollSpeed);
+        const next = computeDrop(live.lastX, live.lastY);
+        live.drop = next;
+        setDropHint(next);
+        autoScrollRef.current = requestAnimationFrame(tick);
+      };
+      autoScrollRef.current = requestAnimationFrame(tick);
+    }
+  }, [computeDrop]);
+
+  const handleRowPointerUp = useCallback((event) => {
+    const session = dragSessionRef.current;
+    if (!session || event.pointerId !== session.pointerId) return;
+    endDrag(true);
+  }, [endDrag]);
+
+  const handleRowPointerDown = useCallback((event, id) => {
+    if (event.button !== undefined && event.button !== 0) return;
+    const listEl = outlineListRef.current;
+    if (!listEl) return;
+    const node = getNodeById(itemsRef.current || [], id);
+    if (!node) return;
+
+    const subtreeIds = collectAllIds(node.children || []);
+    const startDepth = (displayRowsRef.current || []).find((r) => r.node.id === id)?.depth ?? 0;
+    const { unit, gutter } = readIndentMetrics();
+    const listRect = listEl.getBoundingClientRect();
+    const rows = [];
+    for (const row of displayRowsRef.current || []) {
+      if (row.node.id === id || subtreeIds.has(row.node.id)) continue;
+      const el = inputRefs.current.get(row.node.id)?.closest?.(".outline-row");
+      if (!el) continue;
+      const rect = el.getBoundingClientRect();
+      rows.push({ id: row.node.id, depth: row.depth, top: rect.top - listRect.top, height: rect.height });
+    }
+
+    dragSessionRef.current = {
+      id, subtreeIds, rows, listEl, unit, gutter, startDepth,
+      pointerId: event.pointerId, captureEl: event.currentTarget,
+      startX: event.clientX, startY: event.clientY,
+      lastX: event.clientX, lastY: event.clientY,
+      moved: false, drop: null, scrollSpeed: 0,
+    };
+    try { event.currentTarget.setPointerCapture(event.pointerId); } catch { /* noop */ }
+  }, [readIndentMetrics]);
+
+  // ドラッグ直後のクリックでズームしてしまわないように握りつぶす
+  const consumeDragClick = useCallback(() => {
+    const session = dragSessionRef.current;
+    return Boolean(session?.moved);
   }, []);
-
 
   const handleKeyDown = useCallback((event, node, currentText) => {
     if (isImeEvent(event)) return;
@@ -3466,7 +3547,16 @@ export default function App() {
             )}
           </div>
 
-          <div className="outline-list">
+          <div className="outline-list" ref={outlineListRef}>
+            {dropHint && (
+              <div
+                className="drop-indicator"
+                style={{
+                  top: `${dropHint.top}px`,
+                  left: `calc(${dropHint.depth} * var(--indent-unit) + var(--gutter-base) - 26px)`,
+                }}
+              />
+            )}
             {zoomRootNode && visibleRows.length === 0 && (
               <button className="empty-zoom-row" type="button" onClick={addRootNode}>
                 ＋ このタイトルの下に最初のブロックを追加
@@ -3496,11 +3586,12 @@ export default function App() {
                 onEnterSelect={enterRowSelection}
                 onTextPointerDown={handleTextPointerDown}
                 onShiftClick={handleShiftClick}
-                onDragStartRow={handleDragStartRow}
-                onDragOverRow={handleDragOverRow}
-                onDropRow={handleDropRow}
-                onDragEndRow={handleDragEndRow}
-                dragOver={dragOverState?.id === node.id ? dragOverState.mode : ""}
+                onRowPointerDown={handleRowPointerDown}
+                onRowPointerMove={handleRowPointerMove}
+                onRowPointerUp={handleRowPointerUp}
+                consumeDragClick={consumeDragClick}
+                dragging={dragging?.id === node.id}
+                dragSubtree={Boolean(dragging && dragging.subtree.has(node.id))}
                 allTags={allTags}
               />
             ))}
