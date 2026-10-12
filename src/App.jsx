@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { supabase, isSupabaseEnabled } from "./lib/supabase";
 
-const APP_VERSION = "5.11.1";
+const APP_VERSION = "5.11.2";
 const APP_VERSION_LABEL = `Quietliner v${APP_VERSION}`;
 const isTouchPrimary = typeof window !== "undefined" && window.matchMedia("(pointer: coarse)").matches;
 const STORAGE_KEY = "quietliner.state.v4";
@@ -2389,6 +2389,9 @@ export default function App() {
   // 縦方向で挿入位置、横方向でインデント段を決め、子ブロックは丸ごと連れていく。
   const dragSessionRef = useRef(null);
   const autoScrollRef = useRef(0);
+  // pointerup のあとに click が来る。そのときには session を捨てているので、
+  // 「いまのドラッグはクリックではない」という印だけ別に残しておく。
+  const suppressClickRef = useRef(false);
 
   const readIndentMetrics = useCallback(() => {
     const appEl = document.querySelector(".app");
@@ -2486,6 +2489,10 @@ export default function App() {
     setDropHint(null);
     if (!session) return;
     try { session.captureEl?.releasePointerCapture?.(session.pointerId); } catch { /* noop */ }
+    if (session.moved) {
+      suppressClickRef.current = true;
+      setTimeout(() => { suppressClickRef.current = false; }, 300);
+    }
     if (commit && session.moved && session.drop) {
       const { prevId, depth } = session.drop;
       mutateItems((prev) => moveSubtreeTo(prev, session.id, prevId, depth), session.id);
@@ -2566,8 +2573,10 @@ export default function App() {
 
   // ドラッグ直後のクリックでズームしてしまわないように握りつぶす
   const consumeDragClick = useCallback(() => {
-    const session = dragSessionRef.current;
-    return Boolean(session?.moved);
+    if (dragSessionRef.current?.moved) return true;
+    if (!suppressClickRef.current) return false;
+    suppressClickRef.current = false;
+    return true;
   }, []);
 
   const handleKeyDown = useCallback((event, node, currentText) => {
